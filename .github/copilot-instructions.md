@@ -30,6 +30,10 @@ CU-hours, cost, and throttling exposure. Entire app lives in one self-contained 
      per-timepoint load, throttling status, and headroom, then writes every `#r_*` output element and
      the formula trace. It is re-run on every relevant input event (no framework, no virtual DOM).
 - **`SKUS` array drives both** the SKU `<select>` and the reference table — add a SKU in one place.
+- **`REGIONS` object** (groups → `[name, pricePerCUHour]`) drives the Region `<select>` and is the
+  per-region PAYG price source. Selecting a region auto-fills `#price`; a manual `#price` edit flips the
+  region to **"Custom rate"**. Keep `REGIONS` numerically in sync with **Appendix D** of the reference
+  doc (both come from the Azure Retail Prices API, `serviceName eq 'Microsoft Fabric'`).
 
 ## Key conventions
 
@@ -50,5 +54,6 @@ CU-hours, cost, and throttling exposure. Entire app lives in one self-contained 
   `SEC_PER_HOUR = 3600`. Core invariants:
   `effective_CU_hours = Total_CU(s) / 3600`; interactive per-timepoint `= Total / N`, background
   `= Total / 2880`; `load% = per_timepoint_CU(s) / (base_CU × 30)`.
-- **Pricing is illustrative** ($0.18/CU-hour default). Keep the disclaimer and the link to the Fabric
-  pricing page; don't present rates as authoritative.
+- **Pricing is region-driven, not authoritative.** The Region dropdown sets `#price` from `REGIONS`
+  (USD/CU-hour, East US = $0.18 default). Rates can change — keep the link to the Fabric pricing page and
+  the "edit to override" hint; when refreshing rates, update both `REGIONS` and Appendix D together.

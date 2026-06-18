@@ -4,8 +4,8 @@
 > **Capacity Units (CUs)**. Part 1 covers concepts + the calculation formulas (interactive and
 > background CU‑hour math). Part 2 is the service‑by‑service consumption breakdown.
 >
-> All facts sourced from Microsoft Learn (links inline). Pricing numbers shown (e.g. `$0.18/CU‑hour`)
-> are **illustrative** — actual rates are regional; see the [Fabric pricing page](https://azure.microsoft.com/pricing/details/microsoft-fabric/).
+> All facts sourced from Microsoft Learn (links inline). Inline pricing (e.g. `$0.18/CU‑hour`) uses the
+> US‑East PAYG rate as an example — actual rates are **regional**; see [Appendix D](#appendix-d--regional-payasyougo-pricing-us--cuhour) for the full per‑region table.
 
 ---
 
@@ -411,7 +411,68 @@ Serverless/elastic; you pay for the operations you author. ([Data Factory pricin
 * Activator / RTI — https://learn.microsoft.com/fabric/real-time-intelligence/data-activator/activator-capacity-usage
 * Paginated reports capacity planning — https://learn.microsoft.com/power-bi/paginated-reports/paginated-capacity-planning
 
+## Appendix D — Regional pay‑as‑you‑go pricing (USD / CU‑hour)
+
+Capacity is billed at a single PAYG rate per CU‑hour that varies by region; **all workloads share that
+rate** within a region (capacity *overage* is billed at 3×). Reservations are ~41% cheaper than PAYG.
+Rates below are pulled from the **[Azure Retail Prices API](https://prices.azure.com/api/retail/prices)**
+(`serviceName eq 'Microsoft Fabric'`) and are embedded in the calculator's Region dropdown.
+
+**Americas**
+
+| Region | $/CU‑hour | | Region | $/CU‑hour |
+| --- | ---: | --- | --- | ---: |
+| Brazil South | $0.28 | | North Central US | $0.18 |
+| Brazil Southeast | $0.36 | | South Central US | $0.18 |
+| Canada Central | $0.2 | | US Gov Arizona | $0.18 |
+| Canada East | $0.2 | | US Gov Texas | $0.18 |
+| Central US | $0.18 | | US Gov Virginia | $0.18 |
+| Chile Central | $0.25 | | West Central US | $0.2 |
+| East US | $0.18 | | West US | $0.2 |
+| East US 2 | $0.18 | | West US 2 | $0.18 |
+| Mexico Central | $0.19 | | West US 3 | $0.18 |
+
+**Europe**
+
+| Region | $/CU‑hour | | Region | $/CU‑hour |
+| --- | ---: | --- | --- | ---: |
+| Austria East | $0.234 | | Norway West | $0.31 |
+| Belgium Central | $0.234 | | Poland Central | $0.22 |
+| Denmark East | $0.234 | | Spain Central | $0.19 |
+| France Central | $0.2 | | Sweden Central | $0.19 |
+| France South | $0.26 | | Sweden South | $0.24 |
+| Germany North | $0.28 | | Switzerland North | $0.23 |
+| Germany West Central | $0.22 | | Switzerland West | $0.29 |
+| Italy North | $0.21 | | UK South | $0.21 |
+| North Europe | $0.19 | | UK West | $0.21 |
+| Norway East | $0.24 | | West Europe | $0.22 |
+
+**Asia Pacific**
+
+| Region | $/CU‑hour | | Region | $/CU‑hour |
+| --- | ---: | --- | --- | ---: |
+| Australia Central | $0.21 | | Jio India West | $0.2 |
+| Australia Central 2 | $0.21 | | Korea Central | $0.21 |
+| Australia East | $0.21 | | Korea South | $0.28 |
+| Australia Southeast | $0.21 | | Malaysia South | $0.22 |
+| Central India | $0.2 | | Malaysia West | $0.19 |
+| East Asia | $0.18 | | New Zealand North | $0.22 |
+| Indonesia Central | $0.19 | | South India | $0.22 |
+| Japan East | $0.21 | | Southeast Asia | $0.22 |
+| Japan West | $0.21 | | West India | $0.2 |
+| Jio India Central | $0.2 | | | |
+
+**Middle East & Africa**
+
+| Region | $/CU‑hour | | Region | $/CU‑hour |
+| --- | ---: | --- | --- | ---: |
+| Israel Central | $0.2 | | South Africa West | $0.31 |
+| Israel Northwest | $0.2574 | | UAE Central | $0.28 |
+| Qatar Central | $0.22 | | UAE North | $0.22 |
+| South Africa North | $0.24 | | | |
+
 ---
 
-*Compiled from Microsoft Learn via the Microsoft Learn MCP. Pricing figures are illustrative; confirm
-regional rates on the [Fabric pricing page](https://azure.microsoft.com/pricing/details/microsoft-fabric/).*
+*Compiled from Microsoft Learn via the Microsoft Learn MCP. Per‑region PAYG rates (Appendix D) are sourced
+from the [Azure Retail Prices API](https://prices.azure.com/api/retail/prices) and may change; confirm on the
+[Fabric pricing page](https://azure.microsoft.com/pricing/details/microsoft-fabric/).*

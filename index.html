@@ -244,9 +244,13 @@
             <select id="sku"></select>
           </div>
           <div class="field">
-            <label for="price">Price per CU‑hour (region rate)</label>
-            <input type="number" id="price" value="0.18" min="0" step="0.001" />
-            <div class="hint">Illustrative PAYG default. Check the <a href="https://azure.microsoft.com/pricing/details/microsoft-fabric/" target="_blank" rel="noopener">Fabric pricing page</a>.</div>
+            <label for="region">Region</label>
+            <select id="region"></select>
+          </div>
+          <div class="field">
+            <label for="price">Price per CU‑hour (USD)</label>
+            <input type="number" id="price" value="0.18" min="0" step="0.0001" />
+            <div class="hint">Auto‑filled from the region's pay‑as‑you‑go rate — edit to override. Source: <a href="https://azure.microsoft.com/pricing/details/microsoft-fabric/" target="_blank" rel="noopener">Azure Fabric pricing</a> (Retail Prices API).</div>
           </div>
         </div>
         <div class="stats" id="skuStats"></div>
@@ -436,6 +440,82 @@
     ["F1024", 1024, 128], ["F2048", 2048, 256]
   ];
 
+  // Per-region pay-as-you-go price per CU-hour (USD), Azure Retail Prices API.
+  const REGIONS = {
+    "Americas": [
+      ["Brazil South", 0.28],
+      ["Brazil Southeast", 0.36],
+      ["Canada Central", 0.2],
+      ["Canada East", 0.2],
+      ["Central US", 0.18],
+      ["Chile Central", 0.25],
+      ["East US", 0.18],
+      ["East US 2", 0.18],
+      ["Mexico Central", 0.19],
+      ["North Central US", 0.18],
+      ["South Central US", 0.18],
+      ["US Gov Arizona", 0.18],
+      ["US Gov Texas", 0.18],
+      ["US Gov Virginia", 0.18],
+      ["West Central US", 0.2],
+      ["West US", 0.2],
+      ["West US 2", 0.18],
+      ["West US 3", 0.18],
+    ],
+    "Europe": [
+      ["Austria East", 0.234],
+      ["Belgium Central", 0.234],
+      ["Denmark East", 0.234],
+      ["France Central", 0.2],
+      ["France South", 0.26],
+      ["Germany North", 0.28],
+      ["Germany West Central", 0.22],
+      ["Italy North", 0.21],
+      ["North Europe", 0.19],
+      ["Norway East", 0.24],
+      ["Norway West", 0.31],
+      ["Poland Central", 0.22],
+      ["Spain Central", 0.19],
+      ["Sweden Central", 0.19],
+      ["Sweden South", 0.24],
+      ["Switzerland North", 0.23],
+      ["Switzerland West", 0.29],
+      ["UK South", 0.21],
+      ["UK West", 0.21],
+      ["West Europe", 0.22],
+    ],
+    "Asia Pacific": [
+      ["Australia Central", 0.21],
+      ["Australia Central 2", 0.21],
+      ["Australia East", 0.21],
+      ["Australia Southeast", 0.21],
+      ["Central India", 0.2],
+      ["East Asia", 0.18],
+      ["Indonesia Central", 0.19],
+      ["Japan East", 0.21],
+      ["Japan West", 0.21],
+      ["Jio India Central", 0.2],
+      ["Jio India West", 0.2],
+      ["Korea Central", 0.21],
+      ["Korea South", 0.28],
+      ["Malaysia South", 0.22],
+      ["Malaysia West", 0.19],
+      ["New Zealand North", 0.22],
+      ["South India", 0.22],
+      ["Southeast Asia", 0.22],
+      ["West India", 0.2],
+    ],
+    "Middle East & Africa": [
+      ["Israel Central", 0.2],
+      ["Israel Northwest", 0.2574],
+      ["Qatar Central", 0.22],
+      ["South Africa North", 0.24],
+      ["South Africa West", 0.31],
+      ["UAE Central", 0.28],
+      ["UAE North", 0.22],
+    ],
+  };
+
   const SEC_PER_HOUR = 3600;
   const TP_SECONDS = 30;            // a timepoint is 30 seconds
   const TP_PER_DAY = 2880;          // 24h / 30s
@@ -462,6 +542,39 @@
   });
   skuSel.value = "F64";
 
+  // ---- populate Region select (per-region PAYG CU‑hour rates, USD) ----
+  const regionSel = $("region");
+  (function buildRegions() {
+    const c = document.createElement("option");
+    c.value = "custom"; c.textContent = "Custom rate";
+    regionSel.appendChild(c);
+    for (const grp in REGIONS) {
+      const og = document.createElement("optgroup");
+      og.label = grp;
+      REGIONS[grp].forEach(([name, price]) => {
+        const o = document.createElement("option");
+        o.value = name; o.dataset.price = price;
+        o.textContent = `${name} — $${price}/CU‑h`;
+        og.appendChild(o);
+      });
+      regionSel.appendChild(og);
+    }
+    regionSel.value = "East US";
+  })();
+
+  regionSel.addEventListener("change", () => {
+    const opt = regionSel.selectedOptions[0];
+    if (opt && opt.dataset.price !== undefined) $("price").value = opt.dataset.price;
+    recompute();
+  });
+
+  // a manual price edit detaches the selection from a named region
+  $("price").addEventListener("input", () => {
+    const opt = regionSel.selectedOptions[0];
+    if (!opt || opt.value === "custom") return;
+    if (Math.abs((+$("price").value) - (+opt.dataset.price)) > 1e-9) regionSel.value = "custom";
+  });
+
   function fmt(n, max = 2) {
     if (!isFinite(n)) return "—";
     return n.toLocaleString(undefined, { maximumFractionDigits: max });
@@ -469,6 +582,10 @@
   function fmtMoney(n) {
     if (!isFinite(n)) return "—";
     return "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function fmtRate(n) {
+    if (!isFinite(n)) return "—";
+    return "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 });
   }
 
   // ---- compute Total CU-seconds from the active estimator ----
@@ -537,7 +654,7 @@
     $("r_cuhr").textContent = fmt(effCUh, 3) + " CU‑h";
     $("r_cusec").textContent = fmt(cus) + " CU‑seconds";
     $("r_cost").textContent = fmtMoney(cost);
-    $("r_costsub").textContent = `@ ${fmtMoney(price)} / CU‑hour`;
+    $("r_costsub").textContent = `@ ${fmtRate(price)} / CU‑hour`;
 
     $("r_window").textContent = isInteractive
       ? `${windowMin} min  (interactive)`
@@ -582,7 +699,7 @@
     $("r_formula").innerHTML =
       `<b>Total CU(s)</b> = ${note}\n` +
       `<b>Effective CU‑hours</b> = ${fmt(cus)} / 3600 = <b>${fmt(effCUh,3)} CU‑h</b>\n` +
-      `<b>Cost</b> = ${fmt(effCUh,3)} × ${fmtMoney(price)} = <b>${fmtMoney(cost)}</b>\n` +
+      `<b>Cost</b> = ${fmt(effCUh,3)} × ${fmtRate(price)} = <b>${fmtMoney(cost)}</b>\n` +
       `<b>Smoothing N</b> = ${fmt(N,0)} timepoints (${isInteractive ? windowMin + " min" : "24 h"})\n` +
       `<b>Per‑timepoint CU(s)</b> = ${fmt(cus)} / ${fmt(N,0)} = ${fmt(perTP)} CU(s)\n` +
       `<b>Load %</b> = ${fmt(perTP)} / (${baseCU} × 30) = ${fmt(perTP)} / ${fmt(supplyTP)} = <b>${fmt(loadPct,2)}%</b>`;
