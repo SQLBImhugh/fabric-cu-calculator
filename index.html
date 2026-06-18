@@ -137,6 +137,10 @@
     font-family: inherit; font-weight: 500;
   }
   .seg button.active { background: var(--cp-accent); color: var(--cp-accent-fg); }
+  /* term-tooltip affordance on the operation-type buttons: underline only the text,
+     keep it visible on both the muted (inactive) and accent-filled (active) states */
+  .seg button[data-term] { text-decoration: underline dotted; text-underline-offset: 3px; text-decoration-color: var(--cp-accent); }
+  .seg button.active[data-term] { text-decoration-color: var(--cp-accent-fg); }
 
   .hint { font-size: 0.78rem; color: var(--cp-text-soft); margin-top: 6px; }
   .mono-pill {
@@ -289,8 +293,8 @@
         <h2>2 · Operation Type</h2>
         <div class="field">
           <div class="seg" id="classSeg">
-            <button type="button" data-class="interactive" class="active">Interactive</button>
-            <button type="button" data-class="background">Background</button>
+            <button type="button" data-class="interactive" data-term="interactive" class="active">Interactive</button>
+            <button type="button" data-class="background" data-term="background">Background</button>
           </div>
           <div class="hint" id="classHint"></div>
         </div>
@@ -901,26 +905,29 @@
     }
 
     document.addEventListener("mouseover", e => {
-      const t = e.target.closest(".term");
+      const t = e.target.closest("[data-term]");
       if (t && !pinned) show(t);
     });
     document.addEventListener("mouseout", e => {
-      if (e.target.closest(".term") && !pinned) hideSoon();
+      if (e.target.closest("[data-term]") && !pinned) hideSoon();
     });
     pop.addEventListener("mouseenter", () => clearTimeout(hideTimer));
     pop.addEventListener("mouseleave", hideSoon);
 
     document.addEventListener("focusin", e => {
-      const t = e.target.closest(".term");
+      const t = e.target.closest("[data-term]");
       if (t) show(t);
     });
     document.addEventListener("focusout", e => {
-      if (e.target.closest(".term")) hideSoon();
+      if (e.target.closest("[data-term]")) hideSoon();
     });
 
     document.addEventListener("click", e => {
-      const t = e.target.closest(".term");
+      const t = e.target.closest("[data-term]");
       if (t) {
+        // operable controls (e.g. operation-type buttons) keep their own click action
+        // and dismiss the tooltip instead of pinning it
+        if (t.tagName === "BUTTON") { pinned = false; pop.classList.remove("show"); return; }
         e.preventDefault();
         pinned = !(pinned && anchor === t);
         if (pinned) show(t); else pop.classList.remove("show");

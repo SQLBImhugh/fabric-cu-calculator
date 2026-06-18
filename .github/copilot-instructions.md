@@ -35,12 +35,15 @@ CU-hours, cost, and throttling exposure. Entire app lives in one self-contained 
   region to **"Custom rate"**. Keep `REGIONS` numerically in sync with **Appendix D** of the reference
   doc (both come from the Azure Retail Prices API, `serviceName eq 'Microsoft Fabric'`).
 - **`GLOSSARY` object** (`key → {term, def, url}`, ordered by `GLOSSARY_ORDER`) is the single source for
-  both the inline term tooltips and the collapsible **Glossary card** (`#glossaryList`). Inline markers are
-  `<span class="term" data-term="KEY" tabindex="0">…</span>`; the shared `#termPop` popover is built by the
-  `glossary()` IIFE (hover/focus/tap, pin-on-click, Esc/outside-click/resize to close). To add a term: add a
-  `GLOSSARY` entry (+ `GLOSSARY_ORDER`) and, if it should be inline, wrap the word in a `.term` span. URLs
-  point at `learn.microsoft.com/fabric/enterprise/*`; verify each returns HTTP 200. Popover/card text is set
-  via `textContent` (XSS-safe) — keep `<` out of definitions.
+  both the inline term tooltips and the collapsible **Glossary card** (`#glossaryList`). The popover keys off
+  any element with a `data-term` attribute (delegation uses `[data-term]`): plain inline markers are
+  `<span class="term" data-term="KEY" tabindex="0">…</span>`, and operable controls (e.g. the operation-type
+  `<button data-term="KEY">`) are term hosts too — those show on hover/focus but **do not pin** on click
+  (their own click action runs and the tooltip is dismissed). The shared `#termPop` popover is built by the
+  `glossary()` IIFE (hover/focus/tap, pin-on-click for non-button terms, Esc/outside-click/resize to close).
+  To add a term: add a `GLOSSARY` entry (+ `GLOSSARY_ORDER`) and, if inline, wrap the word in a `.term` span
+  (or add `data-term` to a button). URLs point at `learn.microsoft.com/fabric/enterprise/*`; verify each
+  returns HTTP 200. Popover/card text is set via `textContent` (XSS-safe) — keep `<` out of definitions.
 - **Spell out abbreviations:** write **operation(s)**, never "op/ops"; use **CU(s)** for CU-seconds.
 
 ## Key conventions
