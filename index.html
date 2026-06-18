@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Microsoft Fabric CU Calculator</title>
+<script>
+  (() => {
+    const param = new URLSearchParams(window.location.search).get("clawpilotTheme");
+    const theme =
+      param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    document.documentElement.setAttribute("data-theme", theme);
+  })();
+</script>
+<style>
+  :root {
+    color-scheme: light;
+    --cp-bg: #f7f4ef;
+    --cp-bg-elevated: #fcfbf8;
+    --cp-surface: #ffffff;
+    --cp-surface-soft: #f5f5f5;
+    --cp-border: #dedede;
+    --cp-border-strong: #919191;
+    --cp-text: #242424;
+    --cp-text-muted: #5c5c5c;
+    --cp-text-soft: #6f6f6f;
+    --cp-accent: #b11f4b;
+    --cp-accent-hover: #9a1a41;
+    --cp-accent-soft: rgba(177, 31, 75, 0.08);
+    --cp-accent-fg: #ffffff;
+    --cp-success: #16a34a;
+    --cp-danger: #dc2626;
+    --cp-warning: #f59e0b;
+    --cp-link: #0078d4;
+    --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
+    --cp-overlay: rgba(255, 255, 255, 0.8);
+    --cp-panel: rgba(255, 255, 255, 0.86);
+    --cp-panel-strong: rgba(255, 255, 255, 0.96);
+    --cp-sheen: rgba(255, 255, 255, 0.55);
+    --cp-highlight: rgba(177, 31, 75, 0.12);
+  }
+  html[data-theme="dark"] {
+    color-scheme: dark;
+    --cp-bg: #3d3b3a;
+    --cp-bg-elevated: #343231;
+    --cp-surface: #292929;
+    --cp-surface-soft: #2e2e2e;
+    --cp-border: #474747;
+    --cp-border-strong: #5f5f5f;
+    --cp-text: #dedede;
+    --cp-text-muted: #919191;
+    --cp-text-soft: #b0b0b0;
+    --cp-accent: #fd8ea1;
+    --cp-accent-hover: #fb7b91;
+    --cp-accent-soft: rgba(253, 142, 161, 0.14);
+    --cp-accent-fg: #1a1a1a;
+    --cp-success: #4ade80;
+    --cp-danger: #f87171;
+    --cp-warning: #fbbf24;
+    --cp-link: #4da6ff;
+    --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+    --cp-overlay: rgba(41, 41, 41, 0.88);
+    --cp-panel: rgba(41, 41, 41, 0.72);
+    --cp-panel-strong: rgba(41, 41, 41, 0.96);
+    --cp-sheen: rgba(255, 255, 255, 0.04);
+    --cp-highlight: rgba(253, 142, 161, 0.12);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", Aptos, Calibri, -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--cp-bg);
+    color: var(--cp-text);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  code, .mono { font-family: Consolas, "Courier New", Courier, monospace; }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 20px 64px; }
+
+  header.app {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 16px; flex-wrap: wrap; margin-bottom: 22px;
+  }
+  header.app h1 { font-size: 1.6rem; margin: 0 0 4px; letter-spacing: -0.01em; }
+  header.app p { margin: 0; color: var(--cp-text-muted); font-size: 0.92rem; max-width: 640px; }
+  .brand-dot { color: var(--cp-accent); }
+
+  .theme-toggle {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--cp-surface); border: 1px solid var(--cp-border);
+    color: var(--cp-text); border-radius: 0.625rem; padding: 8px 12px;
+    cursor: pointer; font-size: 0.85rem; font-family: inherit;
+  }
+  .theme-toggle:hover { border-color: var(--cp-border-strong); }
+
+  .grid { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 18px; align-items: start; }
+  @media (max-width: 880px) { .grid { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--cp-surface);
+    border: 1px solid var(--cp-border);
+    border-radius: 16px;
+    box-shadow: 0 0 2px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.14);
+    padding: 20px;
+    margin-bottom: 18px;
+  }
+  .card h2 {
+    font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--cp-text-soft); margin: 0 0 16px; font-weight: 600;
+  }
+
+  label { display: block; font-size: 0.85rem; color: var(--cp-text-muted); margin-bottom: 6px; }
+  .field { margin-bottom: 16px; }
+  .row { display: flex; gap: 14px; flex-wrap: wrap; }
+  .row > .field { flex: 1; min-width: 130px; }
+
+  select, input[type="number"], input[type="text"] {
+    width: 100%; padding: 10px 12px;
+    background: var(--cp-bg-elevated);
+    border: 1px solid var(--cp-border);
+    color: var(--cp-text);
+    border-radius: 0.625rem;
+    font-size: 0.95rem; font-family: inherit;
+  }
+  select:focus, input:focus { outline: none; border-color: var(--cp-accent); box-shadow: 0 0 0 3px var(--cp-accent-soft); }
+  input[type="range"] { width: 100%; accent-color: var(--cp-accent); }
+
+  .seg {
+    display: inline-flex; background: var(--cp-surface-soft);
+    border: 1px solid var(--cp-border); border-radius: 0.625rem; padding: 3px; gap: 3px;
+  }
+  .seg button {
+    border: none; background: transparent; color: var(--cp-text-muted);
+    padding: 8px 16px; border-radius: 0.5rem; cursor: pointer; font-size: 0.88rem;
+    font-family: inherit; font-weight: 500;
+  }
+  .seg button.active { background: var(--cp-accent); color: var(--cp-accent-fg); }
+
+  .hint { font-size: 0.78rem; color: var(--cp-text-soft); margin-top: 6px; }
+  .mono-pill {
+    display: inline-block; font-family: Consolas, "Courier New", monospace;
+    background: var(--cp-surface-soft); border: 1px solid var(--cp-border);
+    border-radius: 6px; padding: 1px 7px; font-size: 0.82rem;
+  }
+
+  .estimator-fields { display: none; }
+  .estimator-fields.active { display: block; }
+
+  /* SKU live stats */
+  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 6px; }
+  .stat {
+    background: var(--cp-surface-soft); border: 1px solid var(--cp-border);
+    border-radius: 0.625rem; padding: 10px 12px;
+  }
+  .stat .k { font-size: 0.72rem; color: var(--cp-text-soft); text-transform: uppercase; letter-spacing: 0.05em; }
+  .stat .v { font-size: 1.05rem; font-weight: 600; margin-top: 2px; }
+
+  /* Results */
+  .result-hero { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px; }
+  .hero-box {
+    border: 1px solid var(--cp-border); border-radius: 12px; padding: 16px;
+    background: var(--cp-bg-elevated);
+  }
+  .hero-box.accent { border-color: var(--cp-accent); background: var(--cp-accent-soft); }
+  .hero-box .k { font-size: 0.75rem; color: var(--cp-text-soft); text-transform: uppercase; letter-spacing: 0.05em; }
+  .hero-box .v { font-size: 1.85rem; font-weight: 700; margin-top: 4px; letter-spacing: -0.01em; }
+  .hero-box .sub { font-size: 0.78rem; color: var(--cp-text-muted); margin-top: 2px; }
+
+  .kv { display: flex; justify-content: space-between; align-items: baseline; padding: 9px 0; border-bottom: 1px dashed var(--cp-border); gap: 12px; }
+  .kv:last-child { border-bottom: none; }
+  .kv .k { color: var(--cp-text-muted); font-size: 0.88rem; }
+  .kv .v { font-weight: 600; font-family: Consolas, "Courier New", monospace; font-size: 0.92rem; text-align: right; }
+
+  .bar-wrap { margin-top: 4px; }
+  .bar-track { height: 12px; background: var(--cp-surface-soft); border: 1px solid var(--cp-border); border-radius: 999px; overflow: hidden; }
+  .bar-fill { height: 100%; background: var(--cp-success); border-radius: 999px; transition: width 0.2s ease, background 0.2s ease; }
+
+  .status-chip {
+    display: inline-flex; align-items: center; gap: 7px; font-size: 0.82rem; font-weight: 600;
+    padding: 5px 11px; border-radius: 999px; border: 1px solid var(--cp-border);
+  }
+  .status-chip .led { width: 9px; height: 9px; border-radius: 50%; background: var(--cp-success); }
+  .status-ok { color: var(--cp-success); }
+  .status-ok .led { background: var(--cp-success); }
+  .status-warn { color: var(--cp-warning); }
+  .status-warn .led { background: var(--cp-warning); }
+  .status-bad { color: var(--cp-danger); }
+  .status-bad .led { background: var(--cp-danger); }
+
+  details.ref { margin-top: 4px; }
+  details.ref summary {
+    cursor: pointer; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--cp-text-soft); font-weight: 600; list-style: none; padding: 4px 0;
+  }
+  details.ref summary::-webkit-details-marker { display: none; }
+  details.ref summary::before { content: "▸ "; color: var(--cp-accent); }
+  details.ref[open] summary::before { content: "▾ "; }
+
+  table.sku { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 0.85rem; }
+  table.sku th, table.sku td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--cp-border); }
+  table.sku th:first-child, table.sku td:first-child { text-align: left; }
+  table.sku th { color: var(--cp-text-soft); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; }
+  table.sku tr.active-sku td { background: var(--cp-accent-soft); font-weight: 600; }
+  table.sku td.mono { font-family: Consolas, "Courier New", monospace; }
+
+  .formula {
+    font-family: Consolas, "Courier New", monospace; font-size: 0.82rem;
+    background: var(--cp-surface-soft); border: 1px solid var(--cp-border);
+    border-radius: 0.625rem; padding: 12px 14px; margin-top: 12px; color: var(--cp-text-muted);
+    white-space: pre-wrap; line-height: 1.6;
+  }
+  .formula b { color: var(--cp-text); }
+
+  footer.app { margin-top: 28px; color: var(--cp-text-soft); font-size: 0.8rem; text-align: center; line-height: 1.7; }
+  footer.app a { color: var(--cp-link); text-decoration: none; }
+  footer.app a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="app">
+    <div>
+      <h1>Microsoft Fabric <span class="brand-dot">CU</span> Calculator</h1>
+      <p>Estimate Capacity Unit consumption, CU‑hours, cost, smoothing load and throttling exposure for
+        interactive and background Fabric operations. All math runs in your browser.</p>
+    </div>
+    <button class="theme-toggle" id="themeToggle" type="button">
+      <span id="themeIcon">◐</span><span id="themeLabel">Theme</span>
+    </button>
+  </header>
+
+  <div class="grid">
+
+    <!-- LEFT: INPUTS -->
+    <div>
+      <div class="card">
+        <h2>1 · Capacity &amp; Pricing</h2>
+        <div class="row">
+          <div class="field">
+            <label for="sku">Capacity SKU</label>
+            <select id="sku"></select>
+          </div>
+          <div class="field">
+            <label for="price">Price per CU‑hour (region rate)</label>
+            <input type="number" id="price" value="0.18" min="0" step="0.001" />
+            <div class="hint">Illustrative PAYG default. Check the <a href="https://azure.microsoft.com/pricing/details/microsoft-fabric/" target="_blank" rel="noopener">Fabric pricing page</a>.</div>
+          </div>
+        </div>
+        <div class="stats" id="skuStats"></div>
+      </div>
+
+      <div class="card">
+        <h2>2 · Operation Type</h2>
+        <div class="field">
+          <div class="seg" id="classSeg">
+            <button type="button" data-class="interactive" class="active">Interactive</button>
+            <button type="button" data-class="background">Background</button>
+          </div>
+          <div class="hint" id="classHint"></div>
+        </div>
+        <div class="field" id="smoothingField">
+          <label for="smoothing">Interactive smoothing window: <span id="smoothingLabel" class="mono-pill">5 min</span></label>
+          <input type="range" id="smoothing" min="10" max="128" value="10" step="1" />
+          <div class="hint">Interactive ops smooth over a minimum of 5 min (10 timepoints) up to 64 min (128 timepoints), based on CU(s) consumed. Background ops always smooth over 24 h (2,880 timepoints).</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>3 · Workload Input</h2>
+        <div class="field">
+          <label for="mode">Estimator</label>
+          <select id="mode">
+            <option value="cusec">Direct — Total CU‑seconds</option>
+            <option value="cuhr">Direct — CU‑hours</option>
+            <option value="copilot">Copilot (tokens)</option>
+            <option value="cosmos">Cosmos DB (RU/s × time)</option>
+            <option value="spark">Apache Spark (vCores × time)</option>
+            <option value="adf">Data Factory pipeline</option>
+          </select>
+        </div>
+
+        <div class="estimator-fields active" data-est="cusec">
+          <div class="field">
+            <label for="in_cusec">Total CU‑seconds (from Metrics App)</label>
+            <input type="number" id="in_cusec" value="282240" min="0" step="any" />
+            <div class="hint">The Metrics App "Total CU(s)" already includes duration + bursting.</div>
+          </div>
+        </div>
+
+        <div class="estimator-fields" data-est="cuhr">
+          <div class="field">
+            <label for="in_cuhr">CU‑hours</label>
+            <input type="number" id="in_cuhr" value="78.4" min="0" step="any" />
+          </div>
+        </div>
+
+        <div class="estimator-fields" data-est="copilot">
+          <div class="row">
+            <div class="field">
+              <label for="cop_in">Input tokens</label>
+              <input type="number" id="cop_in" value="2000" min="0" step="1" />
+            </div>
+            <div class="field">
+              <label for="cop_out">Output tokens</label>
+              <input type="number" id="cop_out" value="1000" min="0" step="1" />
+            </div>
+          </div>
+          <div class="hint">Rate: 100 CU‑s per 1,000 input tokens · 400 CU‑s per 1,000 output tokens. Copilot is a background operation.</div>
+        </div>
+
+        <div class="estimator-fields" data-est="cosmos">
+          <div class="row">
+            <div class="field">
+              <label for="cos_ru">Throughput (RU/s)</label>
+              <input type="number" id="cos_ru" value="5000" min="0" step="100" />
+            </div>
+            <div class="field">
+              <label for="cos_hr">Hours active</label>
+              <input type="number" id="cos_hr" value="24" min="0" step="any" />
+            </div>
+          </div>
+          <div class="hint">100 RU/s = 0.067 CU/hr (1 CU/hr ≈ 1,500 RU/s). Cosmos bills the peak hourly throughput; classified background.</div>
+        </div>
+
+        <div class="estimator-fields" data-est="spark">
+          <div class="row">
+            <div class="field">
+              <label for="spk_cu">Capacity Units used</label>
+              <input type="number" id="spk_cu" value="8" min="0" step="any" />
+            </div>
+            <div class="field">
+              <label for="spk_hr">Runtime (hours)</label>
+              <input type="number" id="spk_hr" value="1" min="0" step="any" />
+            </div>
+          </div>
+          <div class="hint">1 CU = 2 Spark vCores → enter CUs (= vCores ÷ 2). Spark is a background operation.</div>
+        </div>
+
+        <div class="estimator-fields" data-est="adf">
+          <div class="row">
+            <div class="field">
+              <label for="adf_units">Data‑movement throughput units</label>
+              <input type="number" id="adf_units" value="4" min="0" step="any" />
+            </div>
+            <div class="field">
+              <label for="adf_min">Copy duration (minutes)</label>
+              <input type="number" id="adf_min" value="11" min="0" step="any" />
+            </div>
+          </div>
+          <div class="row">
+            <div class="field">
+              <label for="adf_orch">Non‑copy activity runs</label>
+              <input type="number" id="adf_orch" value="0" min="0" step="1" />
+            </div>
+            <div class="field">
+              <label for="adf_ssis">SSIS vCore‑hours</label>
+              <input type="number" id="adf_ssis" value="0" min="0" step="any" />
+            </div>
+          </div>
+          <div class="hint">Movement 1.5 CU‑hr/unit·hr · orchestration 0.0056 CU‑hr/run · SSIS 1.35 CU‑hr/vCore. Pipelines are background; child items add their own usage.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: RESULTS -->
+    <div>
+      <div class="card">
+        <h2>Results</h2>
+        <div class="result-hero">
+          <div class="hero-box accent">
+            <div class="k">Effective CU‑hours</div>
+            <div class="v" id="r_cuhr">—</div>
+            <div class="sub" id="r_cusec">—</div>
+          </div>
+          <div class="hero-box">
+            <div class="k">Estimated cost</div>
+            <div class="v" id="r_cost">—</div>
+            <div class="sub" id="r_costsub">—</div>
+          </div>
+        </div>
+
+        <div class="kv"><span class="k">Smoothing window</span><span class="v" id="r_window">—</span></div>
+        <div class="kv"><span class="k">Smoothing timepoints (30 s each)</span><span class="v" id="r_tp">—</span></div>
+        <div class="kv"><span class="k">CU(s) attributed per timepoint</span><span class="v" id="r_pertp">—</span></div>
+        <div class="kv"><span class="k">Capacity supplied per timepoint</span><span class="v" id="r_supply">—</span></div>
+
+        <div class="field" style="margin-top:16px;">
+          <label>Per‑timepoint load <span id="r_loadlabel" class="mono-pill">—</span></label>
+          <div class="bar-wrap"><div class="bar-track"><div class="bar-fill" id="r_loadbar" style="width:0%"></div></div></div>
+        </div>
+
+        <div class="kv" style="margin-top:6px;">
+          <span class="k">Throttling status</span>
+          <span class="v"><span class="status-chip status-ok" id="r_status"><span class="led"></span><span id="r_statustext">—</span></span></span>
+        </div>
+        <div class="kv"><span class="k" id="r_headroomk">Headroom on this SKU</span><span class="v" id="r_headroom">—</span></div>
+      </div>
+
+      <div class="card">
+        <h2>How it was calculated</h2>
+        <div class="formula" id="r_formula">—</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <details class="ref">
+      <summary>SKU reference table</summary>
+      <table class="sku" id="skuTable">
+        <thead>
+          <tr><th>SKU</th><th>Base CUs</th><th>CU‑h / hour</th><th>CU‑h / day</th><th>CU(s) / 30‑s timepoint</th><th>PBI v‑cores</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </details>
+  </div>
+
+  <footer class="app">
+    Built from the <strong>Microsoft Fabric CU Consumption Reference</strong> (sourced from Microsoft Learn).
+    Pricing figures are illustrative — confirm regional rates on the
+    <a href="https://azure.microsoft.com/pricing/details/microsoft-fabric/" target="_blank" rel="noopener">Fabric pricing page</a>.<br/>
+    Static single‑page app · hostable on GitHub Pages · all calculations run client‑side.
+  </footer>
+</div>
+
+<script>
+  "use strict";
+
+  // SKU -> base capacity units
+  const SKUS = [
+    ["F2", 2, 0.25], ["F4", 4, 0.5], ["F8", 8, 1], ["F16", 16, 2], ["F32", 32, 4],
+    ["F64", 64, 8], ["F128", 128, 16], ["F256", 256, 32], ["F512", 512, 64],
+    ["F1024", 1024, 128], ["F2048", 2048, 256]
+  ];
+
+  const SEC_PER_HOUR = 3600;
+  const TP_SECONDS = 30;            // a timepoint is 30 seconds
+  const TP_PER_DAY = 2880;          // 24h / 30s
+  const INTERACTIVE_MIN_TP = 10;    // 5 minutes
+  const INTERACTIVE_MAX_TP = 128;   // 64 minutes
+
+  const $ = (id) => document.getElementById(id);
+  let state = { class: "interactive" };
+
+  // ---- populate SKU select + reference table ----
+  const skuSel = $("sku");
+  const skuTableBody = document.querySelector("#skuTable tbody");
+  SKUS.forEach(([name, cu, vc]) => {
+    const o = document.createElement("option");
+    o.value = name; o.textContent = `${name}  (${cu} CU)`;
+    skuSel.appendChild(o);
+
+    const tr = document.createElement("tr");
+    tr.dataset.sku = name;
+    tr.innerHTML =
+      `<td>${name}</td><td class="mono">${cu}</td><td class="mono">${cu}</td>` +
+      `<td class="mono">${(cu*24).toLocaleString()}</td><td class="mono">${(cu*TP_SECONDS).toLocaleString()}</td><td class="mono">${vc}</td>`;
+    skuTableBody.appendChild(tr);
+  });
+  skuSel.value = "F64";
+
+  function fmt(n, max = 2) {
+    if (!isFinite(n)) return "—";
+    return n.toLocaleString(undefined, { maximumFractionDigits: max });
+  }
+  function fmtMoney(n) {
+    if (!isFinite(n)) return "—";
+    return "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  // ---- compute Total CU-seconds from the active estimator ----
+  function getTotalCUSeconds() {
+    const mode = $("mode").value;
+    switch (mode) {
+      case "cusec": return { cus: +$("in_cusec").value || 0, note: "Direct CU‑seconds input." };
+      case "cuhr":  return { cus: (+$("in_cuhr").value || 0) * SEC_PER_HOUR, note: "CU‑hours × 3600." };
+      case "copilot": {
+        const ti = +$("cop_in").value || 0, to = +$("cop_out").value || 0;
+        const cus = (ti / 1000) * 100 + (to / 1000) * 400;
+        return { cus, note: `(${ti}/1000×100) + (${to}/1000×400) = ${fmt(cus)} CU‑s` };
+      }
+      case "cosmos": {
+        const ru = +$("cos_ru").value || 0, hr = +$("cos_hr").value || 0;
+        const cuh = ru * 0.00067 * hr;        // RU/s × 0.00067 CU/hr × hours
+        return { cus: cuh * SEC_PER_HOUR, note: `${ru} RU/s × 0.00067 × ${hr} h = ${fmt(cuh)} CU‑h` };
+      }
+      case "spark": {
+        const cu = +$("spk_cu").value || 0, hr = +$("spk_hr").value || 0;
+        const cuh = cu * hr;
+        return { cus: cuh * SEC_PER_HOUR, note: `${cu} CU × ${hr} h = ${fmt(cuh)} CU‑h` };
+      }
+      case "adf": {
+        const units = +$("adf_units").value || 0, min = +$("adf_min").value || 0;
+        const orch = +$("adf_orch").value || 0, ssis = +$("adf_ssis").value || 0;
+        const move = units * 1.5 * (min / 60);
+        const orchH = orch * 0.0056;
+        const ssisH = ssis * 1.35;
+        const cuh = move + orchH + ssisH;
+        return { cus: cuh * SEC_PER_HOUR,
+          note: `movement ${fmt(move)} + orchestration ${fmt(orchH,4)} + SSIS ${fmt(ssisH)} = ${fmt(cuh)} CU‑h` };
+      }
+    }
+    return { cus: 0, note: "" };
+  }
+
+  // ---- main recompute ----
+  function recompute() {
+    const baseCU = SKUS.find(s => s[0] === skuSel.value)[1];
+    const price = +$("price").value || 0;
+    const isInteractive = state.class === "interactive";
+
+    // SKU live stats
+    $("skuStats").innerHTML =
+      statBox("Base CUs", baseCU) +
+      statBox("CU‑hours / day", fmt(baseCU * 24)) +
+      statBox("CU(s) / timepoint", fmt(baseCU * TP_SECONDS)) +
+      statBox("CU(s) / hour", fmt(baseCU * SEC_PER_HOUR));
+
+    // highlight active SKU row
+    document.querySelectorAll("#skuTable tbody tr").forEach(tr =>
+      tr.classList.toggle("active-sku", tr.dataset.sku === skuSel.value));
+
+    const { cus, note } = getTotalCUSeconds();
+    const effCUh = cus / SEC_PER_HOUR;
+    const cost = effCUh * price;
+
+    const N = isInteractive ? +$("smoothing").value : TP_PER_DAY;
+    const windowMin = N * TP_SECONDS / 60;
+    const perTP = cus / N;                 // CU-seconds attributed per timepoint
+    const supplyTP = baseCU * TP_SECONDS;  // CU-seconds available per timepoint
+    const loadPct = supplyTP > 0 ? (perTP / supplyTP) * 100 : 0;
+
+    // outputs
+    $("r_cuhr").textContent = fmt(effCUh, 3) + " CU‑h";
+    $("r_cusec").textContent = fmt(cus) + " CU‑seconds";
+    $("r_cost").textContent = fmtMoney(cost);
+    $("r_costsub").textContent = `@ ${fmtMoney(price)} / CU‑hour`;
+
+    $("r_window").textContent = isInteractive
+      ? `${windowMin} min  (interactive)`
+      : `24 h  (background)`;
+    $("r_tp").textContent = `${fmt(N,0)} timepoints`;
+    $("r_pertp").textContent = fmt(perTP) + " CU(s)";
+    $("r_supply").textContent = fmt(supplyTP) + " CU(s)";
+
+    $("r_loadlabel").textContent = fmt(loadPct, 2) + "%";
+    const bar = $("r_loadbar");
+    bar.style.width = Math.min(loadPct, 100) + "%";
+    bar.style.background = loadPct >= 100 ? "var(--cp-danger)"
+      : loadPct >= 75 ? "var(--cp-warning)" : "var(--cp-success)";
+
+    // throttling status
+    const chip = $("r_status");
+    const txt = $("r_statustext");
+    chip.className = "status-chip";
+    if (loadPct >= 100) {
+      chip.classList.add("status-bad");
+      txt.textContent = isInteractive ? "Overload → interactive delay/rejection" : "Overload → background rejection";
+    } else if (loadPct >= 75) {
+      chip.classList.add("status-warn");
+      txt.textContent = "High utilization";
+    } else {
+      chip.classList.add("status-ok");
+      txt.textContent = "Within capacity";
+    }
+
+    // headroom: how many identical ops fit before this window hits 100%
+    const fit = perTP > 0 ? supplyTP / perTP : Infinity;
+    if (isInteractive) {
+      $("r_headroomk").textContent = "Concurrent identical ops to reach 100%";
+      $("r_headroom").textContent = isFinite(fit) ? "≈ " + fmt(fit, 1) : "—";
+    } else {
+      const dailyCUh = baseCU * 24;
+      $("r_headroomk").textContent = "Daily background budget (CU‑h)";
+      $("r_headroom").textContent = `${fmt(effCUh,2)} / ${fmt(dailyCUh)}  (${fmt(effCUh/dailyCUh*100,1)}%)`;
+    }
+
+    // formula trace
+    $("r_formula").innerHTML =
+      `<b>Total CU(s)</b> = ${note}\n` +
+      `<b>Effective CU‑hours</b> = ${fmt(cus)} / 3600 = <b>${fmt(effCUh,3)} CU‑h</b>\n` +
+      `<b>Cost</b> = ${fmt(effCUh,3)} × ${fmtMoney(price)} = <b>${fmtMoney(cost)}</b>\n` +
+      `<b>Smoothing N</b> = ${fmt(N,0)} timepoints (${isInteractive ? windowMin + " min" : "24 h"})\n` +
+      `<b>Per‑timepoint CU(s)</b> = ${fmt(cus)} / ${fmt(N,0)} = ${fmt(perTP)} CU(s)\n` +
+      `<b>Load %</b> = ${fmt(perTP)} / (${baseCU} × 30) = ${fmt(perTP)} / ${fmt(supplyTP)} = <b>${fmt(loadPct,2)}%</b>`;
+  }
+
+  function statBox(k, v) {
+    return `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+  }
+
+  // ---- wiring ----
+  $("classSeg").addEventListener("click", (e) => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+    state.class = btn.dataset.class;
+    document.querySelectorAll("#classSeg button").forEach(b => b.classList.toggle("active", b === btn));
+    $("smoothingField").style.display = state.class === "interactive" ? "block" : "none";
+    $("classHint").textContent = state.class === "interactive"
+      ? "Smoothed over 5–64 min; exposed to the 10‑min (delay) and 60‑min (rejection) thresholds."
+      : "Smoothed evenly over 24 h (2,880 timepoints); exposed to the 24‑h background‑rejection threshold.";
+    recompute();
+  });
+
+  $("smoothing").addEventListener("input", () => {
+    const N = +$("smoothing").value;
+    $("smoothingLabel").textContent = (N * TP_SECONDS / 60) + " min";
+    recompute();
+  });
+
+  $("mode").addEventListener("change", () => {
+    const m = $("mode").value;
+    document.querySelectorAll(".estimator-fields").forEach(el =>
+      el.classList.toggle("active", el.dataset.est === m));
+    // helpful default classification per estimator
+    const backgroundModes = ["copilot", "cosmos", "spark", "adf"];
+    const wantBg = backgroundModes.includes(m);
+    const targetClass = wantBg ? "background" : state.class;
+    if (targetClass !== state.class) {
+      document.querySelector(`#classSeg button[data-class="${targetClass}"]`).click();
+    } else {
+      recompute();
+    }
+  });
+
+  ["sku", "price", "in_cusec", "in_cuhr", "cop_in", "cop_out", "cos_ru", "cos_hr",
+   "spk_cu", "spk_hr", "adf_units", "adf_min", "adf_orch", "adf_ssis"].forEach(id =>
+    $(id).addEventListener("input", recompute));
+
+  // theme toggle
+  function syncThemeLabel() {
+    const t = document.documentElement.getAttribute("data-theme");
+    $("themeIcon").textContent = t === "dark" ? "☾" : "☀";
+    $("themeLabel").textContent = t === "dark" ? "Dark" : "Light";
+  }
+  $("themeToggle").addEventListener("click", () => {
+    const cur = document.documentElement.getAttribute("data-theme");
+    document.documentElement.setAttribute("data-theme", cur === "dark" ? "light" : "dark");
+    syncThemeLabel();
+  });
+
+  // init
+  $("classHint").textContent = "Smoothed over 5–64 min; exposed to the 10‑min (delay) and 60‑min (rejection) thresholds.";
+  syncThemeLabel();
+  recompute();
+</script>
+</body>
+</html>
