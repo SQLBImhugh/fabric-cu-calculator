@@ -388,7 +388,7 @@ Serverless/elastic; you pay for the operations you author. ([Data Factory pricin
 | **% of base** | `smoothed_CUs / base_CUs` for the timepoint. |
 | **Duration (s)** | Wall‑clock runtime. Does **not** affect throttling and is **not** used in cost math. |
 | **Smoothing start/end** | When an (interactive) operation's smoothing window begins/ends. |
-| **Billing type** | Billable vs Non‑billable. CU(s) of **failed** ops still count toward overload. |
+| **Billing type** | Billable vs Non‑billable. CU(s) of **failed** operations still count toward overload. |
 
 ## Appendix C — Source documents (Microsoft Learn)
 

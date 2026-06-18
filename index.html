@@ -216,6 +216,32 @@
   footer.app { margin-top: 28px; color: var(--cp-text-soft); font-size: 0.8rem; text-align: center; line-height: 1.7; }
   footer.app a { color: var(--cp-link); text-decoration: none; }
   footer.app a:hover { text-decoration: underline; }
+
+  /* glossary terms + tooltip popover */
+  .term {
+    border-bottom: 1px dotted var(--cp-accent);
+    cursor: help; color: inherit; white-space: nowrap;
+  }
+  .term:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: 2px; border-radius: 3px; }
+  #termPop {
+    position: absolute; z-index: 60; max-width: 300px;
+    background: var(--cp-panel-strong); border: 1px solid var(--cp-border-strong);
+    border-radius: 0.625rem; box-shadow: var(--cp-shadow);
+    padding: 12px 14px; display: none;
+  }
+  #termPop.show { display: block; }
+  #termPop .t-name { font-weight: 700; font-size: 0.86rem; margin-bottom: 5px; color: var(--cp-text); }
+  #termPop .t-def { font-size: 0.82rem; color: var(--cp-text-muted); line-height: 1.5; }
+  #termPop .t-link { display: inline-block; margin-top: 9px; color: var(--cp-link); text-decoration: none; font-weight: 600; font-size: 0.8rem; }
+  #termPop .t-link:hover { text-decoration: underline; }
+
+  .glossary { display: grid; gap: 12px; margin-top: 14px; }
+  @media (min-width: 680px) { .glossary { grid-template-columns: 1fr 1fr; } }
+  .gterm { border: 1px solid var(--cp-border); border-radius: 0.625rem; padding: 12px 14px; background: var(--cp-bg-elevated); }
+  .gterm h3 { margin: 0 0 5px; font-size: 0.9rem; color: var(--cp-text); }
+  .gterm p { margin: 0 0 8px; font-size: 0.82rem; color: var(--cp-text-muted); line-height: 1.5; }
+  .gterm a { color: var(--cp-link); text-decoration: none; font-size: 0.8rem; font-weight: 600; }
+  .gterm a:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
@@ -224,8 +250,11 @@
   <header class="app">
     <div>
       <h1>Microsoft Fabric <span class="brand-dot">CU</span> Calculator</h1>
-      <p>Estimate Capacity Unit consumption, CU‑hours, cost, smoothing load and throttling exposure for
-        interactive and background Fabric operations. All math runs in your browser.</p>
+      <p>Estimate <span class="term" data-term="cu" tabindex="0">Capacity Unit</span> consumption, CU‑hours, cost,
+        <span class="term" data-term="smoothing" tabindex="0">smoothing</span> load and
+        <span class="term" data-term="throttling" tabindex="0">throttling</span> exposure for
+        <span class="term" data-term="interactive" tabindex="0">interactive</span> and
+        <span class="term" data-term="background" tabindex="0">background</span> Fabric operations. All math runs in your browser.</p>
     </div>
     <button class="theme-toggle" id="themeToggle" type="button">
       <span id="themeIcon">◐</span><span id="themeLabel">Theme</span>
@@ -266,9 +295,9 @@
           <div class="hint" id="classHint"></div>
         </div>
         <div class="field" id="smoothingField">
-          <label for="smoothing">Interactive smoothing window: <span id="smoothingLabel" class="mono-pill">5 min</span></label>
+          <label for="smoothing">Interactive <span class="term" data-term="smoothing" tabindex="0">smoothing</span> window: <span id="smoothingLabel" class="mono-pill">5 min</span></label>
           <input type="range" id="smoothing" min="10" max="128" value="10" step="1" />
-          <div class="hint">Interactive ops smooth over a minimum of 5 min (10 timepoints) up to 64 min (128 timepoints), based on CU(s) consumed. Background ops always smooth over 24 h (2,880 timepoints).</div>
+          <div class="hint"><span class="term" data-term="interactive" tabindex="0">Interactive</span> operations smooth over a minimum of 5 min (10 <span class="term" data-term="timepoint" tabindex="0">timepoints</span>) up to 64 min (128 timepoints), based on CU(s) consumed. <span class="term" data-term="background" tabindex="0">Background</span> operations always smooth over 24 h (2,880 timepoints).</div>
         </div>
       </div>
 
@@ -290,7 +319,7 @@
           <div class="field">
             <label for="in_cusec">Total CU‑seconds (from Metrics App)</label>
             <input type="number" id="in_cusec" value="282240" min="0" step="any" />
-            <div class="hint">The Metrics App "Total CU(s)" already includes duration + bursting.</div>
+            <div class="hint">The Metrics App "Total CU(s)" already includes duration + <span class="term" data-term="bursting" tabindex="0">bursting</span>.</div>
           </div>
         </div>
 
@@ -375,7 +404,7 @@
         <h2>Results</h2>
         <div class="result-hero">
           <div class="hero-box accent">
-            <div class="k">Effective CU‑hours</div>
+            <div class="k">Effective <span class="term" data-term="cuhour" tabindex="0">CU‑hours</span></div>
             <div class="v" id="r_cuhr">—</div>
             <div class="sub" id="r_cusec">—</div>
           </div>
@@ -386,18 +415,18 @@
           </div>
         </div>
 
-        <div class="kv"><span class="k">Smoothing window</span><span class="v" id="r_window">—</span></div>
-        <div class="kv"><span class="k">Smoothing timepoints (30 s each)</span><span class="v" id="r_tp">—</span></div>
-        <div class="kv"><span class="k">CU(s) attributed per timepoint</span><span class="v" id="r_pertp">—</span></div>
+        <div class="kv"><span class="k"><span class="term" data-term="smoothing" tabindex="0">Smoothing</span> window</span><span class="v" id="r_window">—</span></div>
+        <div class="kv"><span class="k">Smoothing <span class="term" data-term="timepoint" tabindex="0">timepoints</span> (30 s each)</span><span class="v" id="r_tp">—</span></div>
+        <div class="kv"><span class="k"><span class="term" data-term="cusec" tabindex="0">CU(s)</span> attributed per timepoint</span><span class="v" id="r_pertp">—</span></div>
         <div class="kv"><span class="k">Capacity supplied per timepoint</span><span class="v" id="r_supply">—</span></div>
 
         <div class="field" style="margin-top:16px;">
-          <label>Per‑timepoint load <span id="r_loadlabel" class="mono-pill">—</span></label>
+          <label><span class="term" data-term="loadpct" tabindex="0">Per‑timepoint load</span> <span id="r_loadlabel" class="mono-pill">—</span></label>
           <div class="bar-wrap"><div class="bar-track"><div class="bar-fill" id="r_loadbar" style="width:0%"></div></div></div>
         </div>
 
         <div class="kv" style="margin-top:6px;">
-          <span class="k">Throttling status</span>
+          <span class="k"><span class="term" data-term="throttling" tabindex="0">Throttling</span> status</span>
           <span class="v"><span class="status-chip status-ok" id="r_status"><span class="led"></span><span id="r_statustext">—</span></span></span>
         </div>
         <div class="kv"><span class="k" id="r_headroomk">Headroom on this SKU</span><span class="v" id="r_headroom">—</span></div>
@@ -419,6 +448,14 @@
         </thead>
         <tbody></tbody>
       </table>
+    </details>
+  </div>
+
+  <div class="card">
+    <details class="ref">
+      <summary>Glossary — Fabric CU terms</summary>
+      <p class="hint" style="margin-top:10px;">Hover, tap, or focus any <span class="term" data-term="cu" tabindex="0">underlined term</span> in the app for a quick definition. Full list, each linked to Microsoft Learn:</p>
+      <div class="glossary" id="glossaryList"></div>
     </details>
   </div>
 
@@ -521,6 +558,50 @@
   const TP_PER_DAY = 2880;          // 24h / 30s
   const INTERACTIVE_MIN_TP = 10;    // 5 minutes
   const INTERACTIVE_MAX_TP = 128;   // 64 minutes
+
+  // ---- Glossary of Fabric CU terms (definition + Microsoft Learn link) ----
+  const L = "https://learn.microsoft.com/fabric/enterprise/";
+  const GLOSSARY = {
+    cu:          { term: "Capacity Unit (CU)", url: L + "licenses",
+                   def: "The unit of compute a Fabric capacity provides. Your SKU number is its base CUs (F64 = 64 CUs). Every workload draws from this single shared pool." },
+    cusec:       { term: "CU‑second — CU(s)", url: L + "metrics-app-calculations",
+                   def: "One Capacity Unit held for one second. The Metrics App reports usage as Total CU(s); divide by 3,600 to get CU‑hours." },
+    cuhour:      { term: "CU‑hour", url: L + "licenses",
+                   def: "One Capacity Unit used for one hour — the unit Fabric capacity is priced in. Effective CU‑hours = Total CU(s) ÷ 3,600." },
+    capacity:    { term: "Capacity / SKU", url: L + "licenses",
+                   def: "The reserved pool of CUs you buy (an F‑SKU such as F64). It sets your base CUs, burst ceiling, and throttling thresholds." },
+    interactive: { term: "Interactive operation", url: L + "fabric-operations",
+                   def: "A user‑initiated, latency‑sensitive request such as a query, DAX, or report render. Smoothed over a short 5–64 minute window and subject to delay and rejection throttling." },
+    background:  { term: "Background operation", url: L + "fabric-operations",
+                   def: "A scheduled or system job such as a data refresh, Spark notebook, pipeline, or Copilot call. Its CU(s) are smoothed evenly over 24 hours to absorb spikes." },
+    timepoint:   { term: "Timepoint", url: L + "metrics-app-timepoint-page",
+                   def: "A 30‑second measurement bucket in the Capacity Metrics App. A day has 2,880 timepoints, and throttling is evaluated per timepoint." },
+    smoothing:   { term: "Smoothing", url: L + "throttling",
+                   def: "Spreading an operation's CU(s) across many timepoints instead of charging it all at once, which flattens spikes. Interactive smooths over 5–64 min; background over 24 h." },
+    throttling:  { term: "Throttling", url: L + "throttling",
+                   def: "When projected future utilization exceeds 100%, Fabric protects the capacity by delaying or rejecting new requests. It has three stages: interactive delay, interactive rejection, and background rejection." },
+    overload:    { term: "Overload", url: L + "throttling",
+                   def: "A state where smoothed demand pushes a future timepoint above 100% of the capacity's CUs. Sustained overload is what triggers throttling." },
+    bursting:    { term: "Bursting", url: L + "throttling",
+                   def: "Temporarily using more CUs than the base SKU to finish a job faster. The extra usage is still smoothed and billed, and it moves future timepoints closer to overload." },
+    overage:     { term: "Overage (carryforward)", url: L + "capacity-overage-overview",
+                   def: "Briefly borrowing capacity from upcoming timepoints when demand spikes. Cumulative overage is billable (about 3× pay‑as‑you‑go) and can be carried forward if enabled." },
+    delay:       { term: "Interactive delay", url: L + "throttling",
+                   def: "The first throttling stage. When more than 10 minutes of future capacity is already consumed, interactive requests are slowed with added latency." },
+    rejection:   { term: "Interactive rejection", url: L + "throttling",
+                   def: "The second throttling stage. When more than 60 minutes of future capacity is consumed, new interactive requests are rejected (HTTP 429)." },
+    bgrejection: { term: "Background rejection", url: L + "throttling",
+                   def: "The final throttling stage. When more than 24 hours of future capacity is consumed, even background jobs are rejected." },
+    surge:       { term: "Surge protection", url: L + "surge-protection",
+                   def: "An admin control that caps how much of a capacity background activity may use, stopping background spikes from throttling interactive users." },
+    loadpct:     { term: "Per‑timepoint load %", url: L + "metrics-app-calculations",
+                   def: "Smoothed CU(s) attributed to a timepoint ÷ the CU(s) the SKU supplies in that timepoint (base CU × 30). At or above 100% the timepoint is overloaded." },
+    metricsapp:  { term: "Capacity Metrics App", url: L + "metrics-app-calculations",
+                   def: "The Microsoft Fabric Capacity Metrics App — the Power BI app that reports CU(s), timepoints, throttling, and overload for your capacity. It is the source of the Total CU(s) values entered here." },
+  };
+  const GLOSSARY_ORDER = ["cu","cusec","cuhour","capacity","interactive","background","timepoint",
+    "smoothing","throttling","overload","bursting","overage","delay","rejection","bgrejection",
+    "surge","loadpct","metricsapp"];
 
   const $ = (id) => document.getElementById(id);
   let state = { class: "interactive" };
@@ -684,10 +765,10 @@
       txt.textContent = "Within capacity";
     }
 
-    // headroom: how many identical ops fit before this window hits 100%
+    // headroom: how many identical operations fit before this window hits 100%
     const fit = perTP > 0 ? supplyTP / perTP : Infinity;
     if (isInteractive) {
-      $("r_headroomk").textContent = "Concurrent identical ops to reach 100%";
+      $("r_headroomk").textContent = "Concurrent identical operations to reach 100%";
       $("r_headroom").textContent = isFinite(fit) ? "≈ " + fmt(fit, 1) : "—";
     } else {
       const dailyCUh = baseCU * 24;
@@ -758,6 +839,100 @@
     document.documentElement.setAttribute("data-theme", cur === "dark" ? "light" : "dark");
     syncThemeLabel();
   });
+
+  // ---- glossary: build reference list + hover/focus/tap tooltips ----
+  (function glossary() {
+    const host = $("glossaryList");
+    if (host) {
+      GLOSSARY_ORDER.forEach(k => {
+        const g = GLOSSARY[k];
+        if (!g) return;
+        const d = document.createElement("div");
+        d.className = "gterm";
+        d.innerHTML = `<h3></h3><p></p><a target="_blank" rel="noopener">Learn more →</a>`;
+        d.querySelector("h3").textContent = g.term;
+        d.querySelector("p").textContent = g.def;
+        d.querySelector("a").href = g.url;
+        host.appendChild(d);
+      });
+    }
+
+    const pop = document.createElement("div");
+    pop.id = "termPop";
+    pop.innerHTML = `<div class="t-name"></div><div class="t-def"></div><a class="t-link" target="_blank" rel="noopener">Learn more →</a>`;
+    document.body.appendChild(pop);
+    const nameEl = pop.querySelector(".t-name");
+    const defEl = pop.querySelector(".t-def");
+    const linkEl = pop.querySelector(".t-link");
+    let hideTimer = null, pinned = false, anchor = null;
+
+    function fill(key) {
+      const g = GLOSSARY[key];
+      if (!g) return false;
+      nameEl.textContent = g.term;
+      defEl.textContent = g.def;
+      linkEl.href = g.url;
+      return true;
+    }
+    function place(el) {
+      pop.style.visibility = "hidden";
+      pop.classList.add("show");
+      const r = el.getBoundingClientRect();
+      const pw = pop.offsetWidth, ph = pop.offsetHeight;
+      const vw = document.documentElement.clientWidth;
+      let left = Math.max(8, Math.min(r.left, vw - pw - 12)) + window.scrollX;
+      let top = window.scrollY + r.bottom + 8;
+      if (r.bottom + ph + 12 > window.innerHeight && r.top - ph - 8 > 0)
+        top = window.scrollY + r.top - ph - 8;
+      pop.style.left = left + "px";
+      pop.style.top = top + "px";
+      pop.style.visibility = "";
+    }
+    function show(el) {
+      clearTimeout(hideTimer);
+      if (!fill(el.dataset.term)) return;
+      anchor = el;
+      place(el);
+      pop.classList.add("show");
+    }
+    function hideSoon() {
+      clearTimeout(hideTimer);
+      hideTimer = setTimeout(() => { if (!pinned) pop.classList.remove("show"); }, 180);
+    }
+
+    document.addEventListener("mouseover", e => {
+      const t = e.target.closest(".term");
+      if (t && !pinned) show(t);
+    });
+    document.addEventListener("mouseout", e => {
+      if (e.target.closest(".term") && !pinned) hideSoon();
+    });
+    pop.addEventListener("mouseenter", () => clearTimeout(hideTimer));
+    pop.addEventListener("mouseleave", hideSoon);
+
+    document.addEventListener("focusin", e => {
+      const t = e.target.closest(".term");
+      if (t) show(t);
+    });
+    document.addEventListener("focusout", e => {
+      if (e.target.closest(".term")) hideSoon();
+    });
+
+    document.addEventListener("click", e => {
+      const t = e.target.closest(".term");
+      if (t) {
+        e.preventDefault();
+        pinned = !(pinned && anchor === t);
+        if (pinned) show(t); else pop.classList.remove("show");
+        return;
+      }
+      if (!e.target.closest("#termPop")) { pinned = false; pop.classList.remove("show"); }
+    });
+    document.addEventListener("keydown", e => {
+      if (e.key === "Escape") { pinned = false; pop.classList.remove("show"); }
+    });
+    window.addEventListener("resize", () => { pinned = false; pop.classList.remove("show"); });
+  })();
 
   // init
   $("classHint").textContent = "Smoothed over 5–64 min; exposed to the 10‑min (delay) and 60‑min (rejection) thresholds.";
