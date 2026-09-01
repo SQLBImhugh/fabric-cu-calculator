@@ -164,6 +164,17 @@ input[type="file"]::file-selector-button{
   border-radius:var(--r-inline);padding:5px 12px;
 }
 input[type="file"]::file-selector-button:hover{border-color:var(--accent)}
+.imp-intro{margin-top:0;margin-bottom:14px}
+.slot{
+  border:1px solid var(--line);border-radius:var(--r-code);
+  background:var(--bg);padding:12px 14px;margin-bottom:12px;
+}
+.slot-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:10px}
+.slot-name{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--accent)}
+.slot-stat{font-family:"Cascadia Mono",Consolas,monospace;font-size:12.5px;color:var(--dim)}
+.slot-stat.filled{color:var(--ink)}
+.slot textarea{margin-top:8px;min-height:64px}
+.slot-col{margin:10px 0 0}
 .imp-sum{
   margin-top:14px;border:1px solid var(--line);border-radius:var(--r-code);
   background:var(--panel2);padding:12px 14px;
@@ -427,24 +438,38 @@ p.hint{margin:10px 0 0}
         </div>
 
         <div class="estimator-fields" data-est="import">
-          <div class="field">
-            <label for="imp_file">Metrics App export (CSV or TSV)</label>
-            <input type="file" id="imp_file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain" />
-            <div class="hint">Export any Metrics App table — the <span class="term" data-term="timepoint" tabindex="0">timepoint</span>
-              operations tables, or the Compute page matrix by item and operation — then load the file here or paste it below.
-              Nothing is uploaded; the file is parsed in your browser.</div>
-          </div>
-          <div class="field">
-            <label for="imp_text">…or paste rows, including the header line</label>
-            <textarea id="imp_text" rows="5" spellcheck="false" placeholder="Workspace,Item name,Operation,Total CU(s)
-Sales,Daily refresh,Dataset refresh,148230
-Finance,Exec dashboard,Query,9820"></textarea>
-          </div>
-          <div class="row" id="imp_cols" hidden>
-            <div class="field">
-              <label for="imp_cu"><span class="term" data-term="cusec" tabindex="0">CU(s)</span> column</label>
-              <select id="imp_cu"></select>
+          <div class="hint imp-intro">Load one table, or load both to model a
+            <span class="term" data-term="timepoint" tabindex="0">timepoint</span> the way Fabric does —
+            combined interactive + background CU(s) against the same 30‑second allowance. The Metrics App
+            timepoint page splits these into two tables. Nothing is uploaded; files are parsed in your browser.</div>
+
+          <div class="slot">
+            <div class="slot-head">
+              <span class="slot-name"><span class="term" data-term="interactive" tabindex="0">Interactive</span> operations</span>
+              <span class="slot-stat" id="imp_stat_interactive">empty</span>
             </div>
+            <input type="file" id="imp_file_interactive" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain" />
+            <textarea id="imp_text_interactive" rows="3" spellcheck="false" placeholder="…or paste the interactive operations table, including its header line"></textarea>
+            <div class="field slot-col" id="imp_colwrap_interactive" hidden>
+              <label for="imp_cu_interactive">CU(s) column</label>
+              <select id="imp_cu_interactive"></select>
+            </div>
+          </div>
+
+          <div class="slot">
+            <div class="slot-head">
+              <span class="slot-name"><span class="term" data-term="background" tabindex="0">Background</span> operations</span>
+              <span class="slot-stat" id="imp_stat_background">empty</span>
+            </div>
+            <input type="file" id="imp_file_background" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain" />
+            <textarea id="imp_text_background" rows="3" spellcheck="false" placeholder="…or paste the background operations table, or an Items export, including its header line"></textarea>
+            <div class="field slot-col" id="imp_colwrap_background" hidden>
+              <label for="imp_cu_background">CU(s) column</label>
+              <select id="imp_cu_background"></select>
+            </div>
+          </div>
+
+          <div class="row" id="imp_cols" hidden>
             <div class="field">
               <label for="imp_group">Group by</label>
               <select id="imp_group"></select>
@@ -803,7 +828,12 @@ Finance,Exec dashboard,Query,9820"></textarea>
   }
 
   // ---- Metrics App export import (CSV / TSV, parsed client-side) ----
-  const IMPORT = { headers: [], rows: [], numericCols: [], total: 0, count: 0, error: "" };
+  const SLOTS = {
+    interactive: { key: "interactive", label: "Interactive", headers: [], rows: [], numericCols: [], total: 0, count: 0, error: "" },
+    background:  { key: "background",  label: "Background",  headers: [], rows: [], numericCols: [], total: 0, count: 0, error: "" }
+  };
+  const slotList = () => [SLOTS.interactive, SLOTS.background];
+  const loadedSlots = () => slotList().filter(s => s.count > 0);
 
   function detectDelimiter(text) {
     const line = text.split(/\r?\n/).find(l => l.trim() !== "") || "";
@@ -866,13 +896,17 @@ Finance,Exec dashboard,Query,9820"></textarea>
   ];
   const GROUP_TESTS = ["itemname", "item", "operationname", "operation", "workspacename", "workspace", "itemkind", "user"];
 
-  function analyzeImport(text) {
-    IMPORT.headers = []; IMPORT.rows = []; IMPORT.numericCols = [];
-    IMPORT.total = 0; IMPORT.count = 0; IMPORT.error = "";
-    if (!text || !text.trim()) return;
+  // Each slot is one Metrics App table. The timepoint page splits interactive and
+  // background into separate tables, so the operation class comes from which slot
+  // a file is loaded into — there is no class column in the export itself.
+  function analyzeSlot(slot, text) {
+    slot.headers = []; slot.rows = []; slot.numericCols = [];
+    slot.total = 0; slot.count = 0; slot.error = "";
+    const wrap = $("imp_colwrap_" + slot.key);
+    if (!text || !text.trim()) { wrap.hidden = true; return; }
 
     const table = parseDelimited(text);
-    if (table.length < 2) { IMPORT.error = "Need a header line plus at least one data row."; return; }
+    if (table.length < 2) { slot.error = "Need a header line plus at least one data row."; wrap.hidden = true; return; }
 
     const headers = table[0].map(h => h.trim());
     const width = headers.length;
@@ -889,8 +923,11 @@ Finance,Exec dashboard,Query,9820"></textarea>
       return seen > 0 && ok / seen >= 0.8;
     });
 
-    IMPORT.headers = headers; IMPORT.rows = rows; IMPORT.numericCols = numeric;
-    if (!numeric.some(Boolean)) { IMPORT.error = "No numeric column found — is this a Metrics App export?"; return; }
+    slot.headers = headers; slot.rows = rows; slot.numericCols = numeric;
+    if (!numeric.some(Boolean)) {
+      slot.error = "No numeric column found — is this a Metrics App export?";
+      wrap.hidden = true; return;
+    }
 
     const norms = headers.map(normHdr);
     let cuCol = -1;
@@ -900,57 +937,98 @@ Finance,Exec dashboard,Query,9820"></textarea>
     }
     if (cuCol < 0) cuCol = numeric.findIndex(Boolean);
 
-    let groupCol = -1;
-    for (const want of GROUP_TESTS) {
-      groupCol = norms.findIndex((n, i) => !numeric[i] && n === want);
-      if (groupCol > -1) break;
-    }
-    if (groupCol < 0) groupCol = norms.findIndex((n, i) => !numeric[i]);
-
-    const cuSel = $("imp_cu"), grpSel = $("imp_group");
-    cuSel.innerHTML = ""; grpSel.innerHTML = "";
+    const cuSel = $("imp_cu_" + slot.key);
+    cuSel.innerHTML = "";
     headers.forEach((h, i) => {
-      const label = (h || `Column ${i + 1}`) + (numeric[i] ? "" : "  (text)");
-      const a = document.createElement("option");
-      a.value = String(i); a.textContent = label; cuSel.appendChild(a);
-      const b = document.createElement("option");
-      b.value = String(i); b.textContent = label; grpSel.appendChild(b);
+      const o = document.createElement("option");
+      o.value = String(i);
+      o.textContent = (h || `Column ${i + 1}`) + (numeric[i] ? "" : "  (text)");
+      cuSel.appendChild(o);
     });
-    const none = document.createElement("option");
-    none.value = "-1"; none.textContent = "(no breakdown)";
-    grpSel.insertBefore(none, grpSel.firstChild);
-
     cuSel.value = String(cuCol);
-    grpSel.value = String(groupCol);
-    $("imp_cols").hidden = false;
+    wrap.hidden = false;
+
+    rebuildGroupOptions();
   }
 
-  function computeImport(baseCU) {
-    const out = $("imp_out");
-    out.textContent = "";
-    if (IMPORT.error) {
-      const p = document.createElement("div");
-      p.className = "imp-err"; p.textContent = IMPORT.error;
-      out.appendChild(p);
-      IMPORT.total = 0; IMPORT.count = 0;
-      return;
-    }
-    if (!IMPORT.rows.length) { IMPORT.total = 0; IMPORT.count = 0; return; }
+  // the breakdown groups across both slots, so offer the columns they share
+  function rebuildGroupOptions() {
+    const grpSel = $("imp_group");
+    const prev = grpSel.value;
+    const src = loadedSlotsRaw().find(s => s.headers.length) || slotList().find(s => s.headers.length);
+    grpSel.innerHTML = "";
+    const none = document.createElement("option");
+    none.value = "-1"; none.textContent = "(no breakdown)";
+    grpSel.appendChild(none);
+    if (!src) { $("imp_cols").hidden = true; return; }
 
-    const cuCol = +$("imp_cu").value;
-    const grpCol = +$("imp_group").value;
-    let total = 0, used = 0;
+    src.headers.forEach((h, i) => {
+      const o = document.createElement("option");
+      o.value = String(i);
+      o.textContent = (h || `Column ${i + 1}`) + (src.numericCols[i] ? "" : "  (text)");
+      grpSel.appendChild(o);
+    });
+
+    let groupCol = -1;
+    const norms = src.headers.map(normHdr);
+    for (const want of GROUP_TESTS) {
+      groupCol = norms.findIndex((n, i) => !src.numericCols[i] && n === want);
+      if (groupCol > -1) break;
+    }
+    if (groupCol < 0) groupCol = norms.findIndex((n, i) => !src.numericCols[i]);
+    const keep = [...grpSel.options].some(o => o.value === prev) && prev !== "-1";
+    grpSel.value = keep ? prev : String(groupCol);
+    $("imp_cols").hidden = false;
+  }
+  const loadedSlotsRaw = () => slotList().filter(s => s.rows.length);
+
+  // sum one slot and return its per-group totals
+  function computeSlot(slot) {
+    slot.total = 0; slot.count = 0;
     const groups = new Map();
-    for (const r of IMPORT.rows) {
+    const stat = $("imp_stat_" + slot.key);
+    if (slot.error) {
+      stat.textContent = slot.error; stat.classList.remove("filled");
+      return groups;
+    }
+    if (!slot.rows.length) {
+      stat.textContent = "empty"; stat.classList.remove("filled");
+      return groups;
+    }
+    const cuCol = +$("imp_cu_" + slot.key).value;
+    const grpCol = +$("imp_group").value;
+    for (const r of slot.rows) {
       const v = parseNumber(r[cuCol]);
       if (isNaN(v)) continue;
-      total += v; used++;
+      slot.total += v; slot.count++;
       if (grpCol >= 0) {
         const k = (r[grpCol] ?? "").trim() || "(blank)";
         groups.set(k, (groups.get(k) || 0) + v);
       }
     }
-    IMPORT.total = total; IMPORT.count = used;
+    stat.textContent = `${slot.count.toLocaleString()} rows · ${fmt(slot.total)} CU(s)`;
+    stat.classList.add("filled");
+    return groups;
+  }
+
+  function computeImport(baseCU) {
+    const out = $("imp_out");
+    out.textContent = "";
+
+    const gi = computeSlot(SLOTS.interactive);
+    const gb = computeSlot(SLOTS.background);
+    const i = SLOTS.interactive, b = SLOTS.background;
+
+    const err = slotList().map(s => s.error).filter(Boolean);
+    if (err.length) {
+      const p = document.createElement("div");
+      p.className = "imp-err"; p.textContent = err.join("  ");
+      out.appendChild(p);
+    }
+    if (!i.count && !b.count) return;
+
+    const total = i.total + b.total;
+    const both = i.count > 0 && b.count > 0;
 
     const box = document.createElement("div");
     box.className = "imp-sum";
@@ -958,59 +1036,78 @@ Finance,Exec dashboard,Query,9820"></textarea>
     head.className = "imp-head";
     const k = document.createElement("span");
     k.className = "k";
-    k.textContent = `${used.toLocaleString()} of ${IMPORT.rows.length.toLocaleString()} rows summed`;
+    k.textContent = both ? "Interactive + background" : (i.count ? "Interactive only" : "Background only");
     const v = document.createElement("span");
     v.className = "v";
     v.textContent = fmt(total) + " CU(s)";
     head.appendChild(k); head.appendChild(v);
     box.appendChild(head);
 
-    if (groups.size) {
-      const top = [...groups.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
-      const tbl = document.createElement("table");
-      for (const [name, cus] of top) {
-        const tr = document.createElement("tr");
-        const td1 = document.createElement("td");
-        td1.textContent = name.length > 46 ? name.slice(0, 45) + "…" : name;
-        const td2 = document.createElement("td");
-        const pct = total > 0 ? (cus / total) * 100 : 0;
-        td2.textContent = `${fmt(cus)}  (${fmt(pct, 1)}%)`;
-        tr.appendChild(td1); tr.appendChild(td2); tbl.appendChild(tr);
-      }
-      box.appendChild(tbl);
+    const tbl = document.createElement("table");
+    const addRow = (label, value) => {
+      const tr = document.createElement("tr");
+      const a = document.createElement("td"); a.textContent = label;
+      const c = document.createElement("td"); c.textContent = value;
+      tr.appendChild(a); tr.appendChild(c); tbl.appendChild(tr);
+    };
+
+    // combined per-timepoint load, the way Fabric judges overload: interactive
+    // smoothed over the selected window, background always over 24 h
+    if (both) {
+      const N = +$("smoothing").value;
+      const perI = i.total / N, perB = b.total / TP_PER_DAY;
+      const supply = baseCU * TP_SECONDS;
+      addRow(`Interactive ÷ ${fmt(N, 0)} timepoints`, `${fmt(perI)} CU(s)`);
+      addRow(`Background ÷ ${fmt(TP_PER_DAY, 0)} timepoints`, `${fmt(perB)} CU(s)`);
+      addRow("Combined per timepoint",
+        `${fmt(perI + perB)} of ${fmt(supply)} CU(s)  (${fmt(supply > 0 ? (perI + perB) / supply * 100 : 0, 2)}%)`);
     }
 
-    // A multi-day export is an aggregate, not one smoothing window. CU-hours and
-    // cost stay correct, but per-timepoint load would pretend the whole total
-    // landed in a single window — so show the true average over the period.
+    // top consumers across whichever slots are loaded
+    const merged = new Map();
+    for (const [key, val] of gi) merged.set(key, (merged.get(key) || 0) + val);
+    for (const [key, val] of gb) merged.set(key, (merged.get(key) || 0) + val);
+    if (merged.size) {
+      const top = [...merged.entries()].sort((a, c) => c[1] - a[1]).slice(0, 5);
+      for (const [name, cus] of top) {
+        addRow(name.length > 44 ? name.slice(0, 43) + "…" : name,
+          `${fmt(cus)}  (${fmt(total > 0 ? cus / total * 100 : 0, 1)}%)`);
+      }
+    }
+
+    // A multi-day export aggregates many smoothing windows. CU-hours and cost stay
+    // correct, but per-timepoint load would pretend it all landed in one window.
     const hours = +$("imp_hours").value || 0;
     if (hours > 0 && total > 0) {
       const avgCU = total / (hours * 3600);
-      const avgPct = baseCU > 0 ? (avgCU / baseCU) * 100 : 0;
-      const t2 = document.createElement("table");
-      const tr = document.createElement("tr");
-      const a = document.createElement("td");
-      a.textContent = `Average utilization over ${fmt(hours)} h`;
-      const b = document.createElement("td");
-      b.textContent = `${fmt(avgCU, 3)} CU  (${fmt(avgPct, 2)}% of ${skuSel.value})`;
-      tr.appendChild(a); tr.appendChild(b); t2.appendChild(tr);
-      box.appendChild(t2);
+      addRow(`Average utilization over ${fmt(hours)} h`,
+        `${fmt(avgCU, 3)} CU  (${fmt(baseCU > 0 ? avgCU / baseCU * 100 : 0, 2)}% of ${skuSel.value})`);
     }
+
+    if (tbl.rows.length) box.appendChild(tbl);
     out.appendChild(box);
 
-    if (hours > TP_SECONDS * TP_PER_DAY / 3600) {
+    if (hours > 24) {
       const w = document.createElement("div");
       w.className = "hint";
       w.textContent = "This export spans more than 24 h, so it aggregates many smoothing windows. " +
-        "Effective CU‑hours and cost are accurate; the per‑timepoint load and throttling status below " +
+        "Effective CU‑hours and cost are accurate; the per‑timepoint load and throttling status " +
         "assume the whole total lands in one window — read the average above instead.";
       out.appendChild(w);
     }
   }
 
-  function loadImportText(text) {
-    analyzeImport(text);
-    if (IMPORT.error || !IMPORT.rows.length) $("imp_cols").hidden = true;
+  function loadImportText(slot, text) {
+    analyzeSlot(slot, text);
+    // Match the operation class to whichever single slot holds data — this has to
+    // consider both slots, not just the edited one, so that clearing a slot also
+    // re-points the smoothing rule at what is left. With both loaded the toggle
+    // only sets the interactive window; background is always 24 h.
+    const loaded = slotList().filter(s => s.rows.length);
+    if (loaded.length === 1 && state.class !== loaded[0].key) {
+      const btn = document.querySelector(`#classSeg button[data-class="${loaded[0].key}"]`);
+      if (btn) { btn.click(); return; }   // the click handler runs recompute
+    }
     recompute();
   }
 
@@ -1021,11 +1118,22 @@ Finance,Exec dashboard,Query,9820"></textarea>
       case "cusec": return { cus: +$("in_cusec").value || 0, note: "Direct CU‑seconds input." };
       case "cuhr":  return { cus: (+$("in_cuhr").value || 0) * SEC_PER_HOUR, note: "CU‑hours × 3600." };
       case "import": {
-        if (IMPORT.error) return { cus: 0, note: esc(IMPORT.error) };
-        if (!IMPORT.count) return { cus: 0, note: "No Metrics App export loaded yet." };
-        const col = IMPORT.headers[+$("imp_cu").value] || "CU(s)";
-        return { cus: IMPORT.total,
-          note: `sum of "${esc(col)}" over ${fmt(IMPORT.count, 0)} imported rows = ${fmt(IMPORT.total)} CU(s)` };
+        const i = SLOTS.interactive, b = SLOTS.background;
+        const err = [i.error, b.error].filter(Boolean)[0];
+        if (!i.count && !b.count) return { cus: 0, note: err ? esc(err) : "No Metrics App export loaded yet." };
+        const cus = i.total + b.total;
+        if (i.count && b.count) {
+          // interactive and background smooth over different windows, so the
+          // per-timepoint figure cannot come from one division of the total
+          const N = +$("smoothing").value;
+          const perTP = i.total / N + b.total / TP_PER_DAY;
+          return { cus, perTPOverride: perTP,
+            note: `interactive ${fmt(i.total)} + background ${fmt(b.total)} = ${fmt(cus)} CU(s)` };
+        }
+        const only = i.count ? i : b;
+        const col = only.headers[+$("imp_cu_" + only.key).value] || "CU(s)";
+        return { cus,
+          note: `${only.label.toLowerCase()}: sum of "${esc(col)}" over ${fmt(only.count, 0)} imported rows = ${fmt(cus)} CU(s)` };
       }
       case "copilot": {
         const ti = +$("cop_in").value || 0, to = +$("cop_out").value || 0;
@@ -1076,13 +1184,20 @@ Finance,Exec dashboard,Query,9820"></textarea>
     // the import summary depends on the SKU, and must settle before its total is read
     if ($("mode").value === "import") computeImport(baseCU);
 
-    const { cus, note } = getTotalCUSeconds();
+    const { cus, note, perTPOverride } = getTotalCUSeconds();
     const effCUh = cus / SEC_PER_HOUR;
     const cost = effCUh * price;
 
+    // a mixed interactive + background import smooths each class over its own
+    // window, so it supplies the per-timepoint figure directly
+    const mixed = perTPOverride != null && isFinite(perTPOverride);
     const N = isInteractive ? +$("smoothing").value : TP_PER_DAY;
     const windowMin = N * TP_SECONDS / 60;
-    const perTP = cus / N;                 // CU-seconds attributed per timepoint
+    // in mixed mode the interactive leg always comes from the slider, even when the
+    // operation-type toggle is set to background
+    const interN = +$("smoothing").value;
+    const interWindowMin = interN * TP_SECONDS / 60;
+    const perTP = mixed ? perTPOverride : cus / N;
     const supplyTP = baseCU * TP_SECONDS;  // CU-seconds available per timepoint
     const loadPct = supplyTP > 0 ? (perTP / supplyTP) * 100 : 0;
 
@@ -1092,10 +1207,12 @@ Finance,Exec dashboard,Query,9820"></textarea>
     $("r_cost").textContent = fmtMoney(cost);
     $("r_costsub").textContent = `@ ${fmtRate(price)} / CU‑hour`;
 
-    $("r_window").textContent = isInteractive
-      ? `${windowMin} min  (interactive)`
-      : `24 h  (background)`;
-    $("r_tp").textContent = `${fmt(N,0)} timepoints`;
+    $("r_window").textContent = mixed
+      ? `${interWindowMin} min interactive + 24 h background`
+      : isInteractive ? `${windowMin} min  (interactive)` : `24 h  (background)`;
+    $("r_tp").textContent = mixed
+      ? `${fmt(interN, 0)} + ${fmt(TP_PER_DAY, 0)} timepoints`
+      : `${fmt(N,0)} timepoints`;
     $("r_pertp").textContent = fmt(perTP) + " CU(s)";
     $("r_supply").textContent = fmt(supplyTP) + " CU(s)";
 
@@ -1111,7 +1228,8 @@ Finance,Exec dashboard,Query,9820"></textarea>
     chip.className = "status-chip";
     if (loadPct >= 100) {
       chip.classList.add("status-bad");
-      txt.textContent = isInteractive ? "Overload → interactive delay/rejection" : "Overload → background rejection";
+      txt.textContent = mixed ? "Overload → delay/rejection (both classes)"
+        : isInteractive ? "Overload → interactive delay/rejection" : "Overload → background rejection";
     } else if (loadPct >= 75) {
       chip.classList.add("status-warn");
       txt.textContent = "High utilization";
@@ -1120,9 +1238,14 @@ Finance,Exec dashboard,Query,9820"></textarea>
       txt.textContent = "Within capacity";
     }
 
-    // headroom: how many identical operations fit before this window hits 100%
+    // the interactive smoothing window still drives the mixed calculation, so keep
+    // the slider reachable even when the operation-type toggle says background
+    if (mixed) $("smoothingField").style.display = "block";
     const fit = perTP > 0 ? supplyTP / perTP : Infinity;
-    if (isInteractive) {
+    if (mixed) {
+      $("r_headroomk").textContent = "Timepoint allowance used";
+      $("r_headroom").textContent = `${fmt(perTP)} / ${fmt(supplyTP)} CU(s)`;
+    } else if (isInteractive) {
       $("r_headroomk").textContent = "Concurrent identical operations to reach 100%";
       $("r_headroom").textContent = isFinite(fit) ? "≈ " + fmt(fit, 1) : "—";
     } else {
@@ -1132,12 +1255,16 @@ Finance,Exec dashboard,Query,9820"></textarea>
     }
 
     // formula trace
+    const smoothLine = mixed
+      ? `<b>Smoothing</b> = interactive ÷ ${fmt(interN, 0)} (${interWindowMin} min), background ÷ ${fmt(TP_PER_DAY, 0)} (24 h)\n` +
+        `<b>Per‑timepoint CU(s)</b> = ${fmt(SLOTS.interactive.total)}/${fmt(interN, 0)} + ${fmt(SLOTS.background.total)}/${fmt(TP_PER_DAY, 0)} = ${fmt(perTP)} CU(s)\n`
+      : `<b>Smoothing N</b> = ${fmt(N,0)} timepoints (${isInteractive ? windowMin + " min" : "24 h"})\n` +
+        `<b>Per‑timepoint CU(s)</b> = ${fmt(cus)} / ${fmt(N,0)} = ${fmt(perTP)} CU(s)\n`;
     $("r_formula").innerHTML =
       `<b>Total CU(s)</b> = ${note}\n` +
       `<b>Effective CU‑hours</b> = ${fmt(cus)} / 3600 = <b>${fmt(effCUh,3)} CU‑h</b>\n` +
       `<b>Cost</b> = ${fmt(effCUh,3)} × ${fmtRate(price)} = <b>${fmtMoney(cost)}</b>\n` +
-      `<b>Smoothing N</b> = ${fmt(N,0)} timepoints (${isInteractive ? windowMin + " min" : "24 h"})\n` +
-      `<b>Per‑timepoint CU(s)</b> = ${fmt(cus)} / ${fmt(N,0)} = ${fmt(perTP)} CU(s)\n` +
+      smoothLine +
       `<b>Load %</b> = ${fmt(perTP)} / (${baseCU} × 30) = ${fmt(perTP)} / ${fmt(supplyTP)} = <b>${fmt(loadPct,2)}%</b>`;
   }
 
@@ -1183,49 +1310,54 @@ Finance,Exec dashboard,Query,9820"></textarea>
    "spk_cu", "spk_hr", "adf_units", "adf_min", "adf_orch", "adf_ssis"].forEach(id =>
     $(id).addEventListener("input", recompute));
 
-  // ---- import wiring: file picker, paste, drag-and-drop, column overrides ----
+  // ---- import wiring: per-slot file picker, paste, drag-and-drop, column override ----
   (function importWiring() {
-    const ta = $("imp_text");
+    slotList().forEach(slot => {
+      const ta = $("imp_text_" + slot.key);
 
-    function readFile(file) {
-      if (!file) return;
-      // the Metrics App names exports like "Items (14 days).csv" — use that as the period
-      const m = /\((\d+(?:\.\d+)?)\s*(day|days|hour|hours|hr|hrs|h)\)/i.exec(file.name || "");
-      if (m) {
-        const n = parseFloat(m[1]);
-        $("imp_hours").value = /^h|^hour|^hr/i.test(m[2]) ? n : n * 24;
+      function readFile(file) {
+        if (!file) return;
+        // the Metrics App names exports like "Items (14 days).csv" — use that as the period
+        const m = /\((\d+(?:\.\d+)?)\s*(day|days|hour|hours|hr|hrs|h)\)/i.exec(file.name || "");
+        if (m) {
+          const n = parseFloat(m[1]);
+          $("imp_hours").value = /^h/i.test(m[2]) ? n : n * 24;
+        }
+        const fr = new FileReader();
+        fr.onload = () => {
+          const text = String(fr.result || "");
+          ta.value = text.length > 400000 ? text.slice(0, 400000) : text;
+          loadImportText(slot, ta.value);
+        };
+        fr.onerror = () => {
+          slot.error = "Could not read that file.";
+          recompute();
+        };
+        fr.readAsText(file);
       }
-      const fr = new FileReader();
-      fr.onload = () => {
-        const text = String(fr.result || "");
-        ta.value = text.length > 400000 ? text.slice(0, 400000) : text;
-        loadImportText(ta.value);
-      };
-      fr.onerror = () => {
-        IMPORT.error = "Could not read that file.";
-        recompute();
-      };
-      fr.readAsText(file);
-    }
 
-    $("imp_file").addEventListener("change", e => readFile(e.target.files && e.target.files[0]));
+      $("imp_file_" + slot.key).addEventListener("change",
+        e => readFile(e.target.files && e.target.files[0]));
 
-    let t = null;
-    ta.addEventListener("input", () => {
-      clearTimeout(t);
-      t = setTimeout(() => loadImportText(ta.value), 250);
+      let t = null;
+      ta.addEventListener("input", () => {
+        clearTimeout(t);
+        t = setTimeout(() => loadImportText(slot, ta.value), 250);
+      });
+
+      ["dragenter", "dragover"].forEach(ev =>
+        ta.addEventListener(ev, e => { e.preventDefault(); ta.classList.add("drag"); }));
+      ["dragleave", "dragend", "drop"].forEach(ev =>
+        ta.addEventListener(ev, () => ta.classList.remove("drag")));
+      ta.addEventListener("drop", e => {
+        const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (f) { e.preventDefault(); readFile(f); }
+      });
+
+      $("imp_cu_" + slot.key).addEventListener("change", recompute);
     });
 
-    ["dragenter", "dragover"].forEach(ev =>
-      ta.addEventListener(ev, e => { e.preventDefault(); ta.classList.add("drag"); }));
-    ["dragleave", "dragend", "drop"].forEach(ev =>
-      ta.addEventListener(ev, () => ta.classList.remove("drag")));
-    ta.addEventListener("drop", e => {
-      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-      if (f) { e.preventDefault(); readFile(f); }
-    });
-
-    ["imp_cu", "imp_group"].forEach(id => $(id).addEventListener("change", recompute));
+    $("imp_group").addEventListener("change", recompute);
     $("imp_hours").addEventListener("input", recompute);
   })();
 

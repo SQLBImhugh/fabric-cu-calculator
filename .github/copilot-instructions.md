@@ -71,15 +71,23 @@ CU-hours, cost, and throttling exposure. Entire app lives in one self-contained 
   Background-only estimators (Copilot, Cosmos, Spark, ADF) auto-force the Background class via the
   `backgroundModes` list in the `#mode` change handler. The `import` estimator is deliberately not in
   that list — an export can be either class.
-- **The `import` estimator parses Metrics App CSV/TSV exports client-side.** `parseDelimited()` is
-  RFC4180-style (quoted fields, `""` escapes, BOM strip, comma/tab/semicolon/pipe auto-detect) and
-  `parseNumber()` handles both `1,234.56` and `1.234,56`. The CU column is auto-detected by normalised
-  header (`CU (s)`, `Total CU(s)`, …) restricted to columns that are ≥80% numeric, so `Duration (s)` is
-  never picked; the user can override both it and the group-by column. `IMPORT` holds the parsed state
-  and `recompute()` calls `computeImport(baseCU)` **before** `getTotalCUSeconds()` reads its total.
+- **The `import` estimator parses Metrics App CSV/TSV exports client-side, in two class slots.** The
+  timepoint page splits interactive and background into *separate tables* and there is no operation-class
+  column in any export, so the class comes from which slot a file is loaded into (`SLOTS.interactive` /
+  `SLOTS.background`, ids suffixed `_interactive` / `_background`). `parseDelimited()` is RFC4180-style
+  (quoted fields, `""` escapes, BOM strip, comma/tab/semicolon/pipe auto-detect) and `parseNumber()`
+  handles both `1,234.56` and `1.234,56`. The CU column is auto-detected per slot by normalised header
+  (`CU (s)`, `Total CU(s)`, …) restricted to columns that are ≥80% numeric, so `Duration (s)` is never
+  picked. `recompute()` calls `computeImport(baseCU)` **before** `getTotalCUSeconds()` reads the totals.
+- **Mixed imports need `perTPOverride`.** With both slots loaded, the two classes smooth over different
+  windows (interactive ÷ N, background ÷ 2,880), so a single `cus / N` cannot express the result.
+  `getTotalCUSeconds()` returns `perTPOverride` and `recompute()` uses it instead. In that mode the
+  interactive leg always reads the slider (`interN`), never `N`, because the operation-type toggle may
+  be sitting on background. `loadImportText()` re-points the toggle whenever exactly one slot holds
+  data — it must inspect both slots so that *clearing* a slot also fixes the smoothing rule.
   A multi-day export aggregates many smoothing windows, so when "period covered" is set the summary
-  shows true average utilization and warns that per-timepoint load assumes a single window; the period
-  is auto-filled from filenames like `Items (14 days).csv`.
+  shows true average utilization and warns; the period is auto-filled from names like
+  `Items (14 days).csv`.
 - **`r_formula` is written with `innerHTML`**, so any string reaching a `note` must be escaped with
   `esc()`. Imported column headers are attacker-controlled if a user opens someone else's CSV.
 - **Never commit `*.csv`** — Metrics App exports carry workspace, item and user names. `.gitignore`
