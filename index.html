@@ -4,273 +4,317 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Microsoft Fabric CU Calculator</title>
-<script>
-  (() => {
-    const param = new URLSearchParams(window.location.search).get("clawpilotTheme");
-    const theme =
-      param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-    document.documentElement.setAttribute("data-theme", theme);
-  })();
-</script>
 <style>
-  :root {
-    color-scheme: light;
-    --cp-bg: #f7f4ef;
-    --cp-bg-elevated: #fcfbf8;
-    --cp-surface: #ffffff;
-    --cp-surface-soft: #f5f5f5;
-    --cp-border: #dedede;
-    --cp-border-strong: #919191;
-    --cp-text: #242424;
-    --cp-text-muted: #5c5c5c;
-    --cp-text-soft: #6f6f6f;
-    --cp-accent: #b11f4b;
-    --cp-accent-hover: #9a1a41;
-    --cp-accent-soft: rgba(177, 31, 75, 0.08);
-    --cp-accent-fg: #ffffff;
-    --cp-success: #16a34a;
-    --cp-danger: #dc2626;
-    --cp-warning: #f59e0b;
-    --cp-link: #0078d4;
-    --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
-    --cp-overlay: rgba(255, 255, 255, 0.8);
-    --cp-panel: rgba(255, 255, 255, 0.86);
-    --cp-panel-strong: rgba(255, 255, 255, 0.96);
-    --cp-sheen: rgba(255, 255, 255, 0.55);
-    --cp-highlight: rgba(177, 31, 75, 0.12);
-  }
-  html[data-theme="dark"] {
-    color-scheme: dark;
-    --cp-bg: #3d3b3a;
-    --cp-bg-elevated: #343231;
-    --cp-surface: #292929;
-    --cp-surface-soft: #2e2e2e;
-    --cp-border: #474747;
-    --cp-border-strong: #5f5f5f;
-    --cp-text: #dedede;
-    --cp-text-muted: #919191;
-    --cp-text-soft: #b0b0b0;
-    --cp-accent: #fd8ea1;
-    --cp-accent-hover: #fb7b91;
-    --cp-accent-soft: rgba(253, 142, 161, 0.14);
-    --cp-accent-fg: #1a1a1a;
-    --cp-success: #4ade80;
-    --cp-danger: #f87171;
-    --cp-warning: #fbbf24;
-    --cp-link: #4da6ff;
-    --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
-    --cp-overlay: rgba(41, 41, 41, 0.88);
-    --cp-panel: rgba(41, 41, 41, 0.72);
-    --cp-panel-strong: rgba(41, 41, 41, 0.96);
-    --cp-sheen: rgba(255, 255, 255, 0.04);
-    --cp-highlight: rgba(253, 142, 161, 0.12);
-  }
+:root{
+  color-scheme: dark;
 
-  * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; }
-  body {
-    font-family: "Segoe UI", Aptos, Calibri, -apple-system, BlinkMacSystemFont, sans-serif;
-    background: var(--cp-bg);
-    color: var(--cp-text);
-    line-height: 1.5;
-    -webkit-font-smoothing: antialiased;
-  }
-  code, .mono { font-family: Consolas, "Courier New", Courier, monospace; }
+  /* surfaces */
+  --bg:#0d1117;          /* page background */
+  --panel:#151b24;       /* cards */
+  --panel2:#1b232e;      /* table headers, nested panels */
+  --line:#2a3441;        /* every border and rule */
+  --code-bg:#0b0f14;     /* code blocks and inline code */
 
-  .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 20px 64px; }
+  /* text */
+  --ink:#e8edf4;         /* primary */
+  --muted:#9fb0c3;       /* secondary, captions, table headers */
+  --dim:#61738a;         /* labels, de-emphasised metadata */
 
-  header.app {
-    display: flex; align-items: flex-start; justify-content: space-between;
-    gap: 16px; flex-wrap: wrap; margin-bottom: 22px;
-  }
-  header.app h1 { font-size: 1.6rem; margin: 0 0 4px; letter-spacing: -0.01em; }
-  header.app p { margin: 0; color: var(--cp-text-muted); font-size: 0.92rem; max-width: 640px; }
-  .brand-dot { color: var(--cp-accent); }
+  /* accents — one cyan accent, plus semantic status colors */
+  --accent:#4dd0e1;      /* links, eyebrow, section accents */
+  --green:#3ddc97;       /* success / "after" / added */
+  --red:#ff4d6d;         /* failure / "before" / removed */
+  --amber:#ffb020;       /* warning */
+  --orange:#ff8c42;      /* numbered badges, step markers */
 
-  .theme-toggle {
-    display: inline-flex; align-items: center; gap: 8px;
-    background: var(--cp-surface); border: 1px solid var(--cp-border);
-    color: var(--cp-text); border-radius: 0.625rem; padding: 8px 12px;
-    cursor: pointer; font-size: 0.85rem; font-family: inherit;
-  }
-  .theme-toggle:hover { border-color: var(--cp-border-strong); }
+  /* code */
+  --code-ink:#ffd9a8;    /* inline code text */
+  --code-block:#c9e8ff;  /* code block text */
+}
 
-  .grid { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 18px; align-items: start; }
-  @media (max-width: 880px) { .grid { grid-template-columns: 1fr; } }
+/* Derived tokens. Every value below is taken from the theme's own callout
+   and hover fills so that no component rule hardcodes a colour. */
+:root{
+  --wash-accent:#101a20;  /* .note fill  */
+  --wash-amber:#1e1708;   /* .warn fill  */
+  --wash-red:#200e13;     /* .danger fill*/
+  --wash-green:#0c1c16;   /* .good fill  */
+  --row-hover:#111823;    /* tbody tr:hover */
+  --sheen:rgba(255,255,255,.06);
 
-  .card {
-    background: var(--cp-surface);
-    border: 1px solid var(--cp-border);
-    border-radius: 16px;
-    box-shadow: 0 0 2px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.14);
-    padding: 20px;
-    margin-bottom: 18px;
-  }
-  .card h2 {
-    font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.07em;
-    color: var(--cp-text-soft); margin: 0 0 16px; font-weight: 600;
-  }
+  --r-card:14px;
+  --r-panel:12px;
+  --r-code:10px;
+  --r-control:8px;
+  --r-inline:5px;
+  --r-pill:999px;
+}
 
-  label { display: block; font-size: 0.85rem; color: var(--cp-text-muted); margin-bottom: 6px; }
-  .field { margin-bottom: 16px; }
-  .row { display: flex; gap: 14px; flex-wrap: wrap; }
-  .row > .field { flex: 1; min-width: 130px; }
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  font:16px/1.6 "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+  background:var(--bg);
+  color:var(--ink);
+  -webkit-font-smoothing:antialiased;
+}
 
-  select, input[type="number"], input[type="text"] {
-    width: 100%; padding: 10px 12px;
-    background: var(--cp-bg-elevated);
-    border: 1px solid var(--cp-border);
-    color: var(--cp-text);
-    border-radius: 0.625rem;
-    font-size: 0.95rem; font-family: inherit;
-  }
-  select:focus, input:focus { outline: none; border-color: var(--cp-accent); box-shadow: 0 0 0 3px var(--cp-accent-soft); }
-  input[type="range"] { width: 100%; accent-color: var(--cp-accent); }
+h1{font-size:34px;line-height:1.2;letter-spacing:-.02em;margin:0 0 10px}
+h3{font-size:17px;margin:0 0 6px}
 
-  .seg {
-    display: inline-flex; background: var(--cp-surface-soft);
-    border: 1px solid var(--cp-border); border-radius: 0.625rem; padding: 3px; gap: 3px;
-  }
-  .seg button {
-    border: none; background: transparent; color: var(--cp-text-muted);
-    padding: 8px 16px; border-radius: 0.5rem; cursor: pointer; font-size: 0.88rem;
-    font-family: inherit; font-weight: 500;
-  }
-  .seg button.active { background: var(--cp-accent); color: var(--cp-accent-fg); }
-  /* term-tooltip affordance on the operation-type buttons: underline only the text,
-     keep it visible on both the muted (inactive) and accent-filled (active) states */
-  .seg button[data-term] { text-decoration: underline dotted; text-underline-offset: 3px; text-decoration-color: var(--cp-accent); }
-  .seg button.active[data-term] { text-decoration-color: var(--cp-accent-fg); }
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
-  .hint { font-size: 0.78rem; color: var(--cp-text-soft); margin-top: 6px; }
-  .mono-pill {
-    display: inline-block; font-family: Consolas, "Courier New", monospace;
-    background: var(--cp-surface-soft); border: 1px solid var(--cp-border);
-    border-radius: 6px; padding: 1px 7px; font-size: 0.82rem;
-  }
+.wrap{max-width:1180px;margin:0 auto;padding:0 24px}
+main.page{display:block;padding:32px 0 96px}
 
-  .estimator-fields { display: none; }
-  .estimator-fields.active { display: block; }
+/* ---- hero ---- */
+header.hero{
+  border-bottom:1px solid var(--line);
+  padding:44px 0 34px;
+  background:linear-gradient(160deg,#131c28 0%,#0d1117 70%);
+}
+.eyebrow{
+  color:var(--accent);font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;font-size:12px;
+}
+header.hero p{margin:0;color:var(--muted);font-size:15px;max-width:70ch}
+.pills{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+.pill{
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--r-pill);
+  padding:6px 14px;font-size:13px;color:var(--muted);
+}
+.pill b{color:var(--ink);font-weight:600}
 
-  /* SKU live stats */
-  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 6px; }
-  .stat {
-    background: var(--cp-surface-soft); border: 1px solid var(--cp-border);
-    border-radius: 0.625rem; padding: 10px 12px;
-  }
-  .stat .k { font-size: 0.72rem; color: var(--cp-text-soft); text-transform: uppercase; letter-spacing: 0.05em; }
-  .stat .v { font-size: 1.05rem; font-weight: 600; margin-top: 2px; }
+/* ---- layout ---- */
+.grid{display:grid;grid-template-columns:1.05fr .95fr;gap:20px;align-items:start}
+@media(max-width:880px){.grid{grid-template-columns:1fr}}
 
-  /* Results */
-  .result-hero { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px; }
-  .hero-box {
-    border: 1px solid var(--cp-border); border-radius: 12px; padding: 16px;
-    background: var(--cp-bg-elevated);
-  }
-  .hero-box.accent { border-color: var(--cp-accent); background: var(--cp-accent-soft); }
-  .hero-box .k { font-size: 0.75rem; color: var(--cp-text-soft); text-transform: uppercase; letter-spacing: 0.05em; }
-  .hero-box .v { font-size: 1.85rem; font-weight: 700; margin-top: 4px; letter-spacing: -0.01em; }
-  .hero-box .sub { font-size: 0.78rem; color: var(--cp-text-muted); margin-top: 2px; }
+.card{
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--r-card);
+  padding:26px 28px;margin-bottom:20px;
+}
+.card:last-child{margin-bottom:0}
+.section{margin-top:44px}
 
-  .kv { display: flex; justify-content: space-between; align-items: baseline; padding: 9px 0; border-bottom: 1px dashed var(--cp-border); gap: 12px; }
-  .kv:last-child { border-bottom: none; }
-  .kv .k { color: var(--cp-text-muted); font-size: 0.88rem; }
-  .kv .v { font-weight: 600; font-family: Consolas, "Courier New", monospace; font-size: 0.92rem; text-align: right; }
+/* card headings use the eyebrow role, with an orange step marker */
+.card h2{
+  font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--accent);margin:0 0 18px;padding:0;border:none;
+  display:flex;align-items:center;gap:10px;
+}
+.step{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:22px;height:22px;padding:0 6px;
+  border:1px solid var(--line);border-radius:var(--r-pill);
+  background:var(--panel2);color:var(--orange);
+  font-size:12px;font-weight:700;letter-spacing:0;
+}
 
-  .bar-wrap { margin-top: 4px; }
-  .bar-track { height: 12px; background: var(--cp-surface-soft); border: 1px solid var(--cp-border); border-radius: 999px; overflow: hidden; }
-  .bar-fill { height: 100%; background: var(--cp-success); border-radius: 999px; transition: width 0.2s ease, background 0.2s ease; }
+/* ---- forms ---- */
+label{display:block;font-size:13px;color:var(--dim);margin-bottom:6px;
+      text-transform:uppercase;letter-spacing:.08em;font-weight:600}
+.field{margin-bottom:18px}
+.field:last-child{margin-bottom:0}
+.row{display:flex;gap:14px;flex-wrap:wrap}
+.row>.field{flex:1;min-width:140px}
 
-  .status-chip {
-    display: inline-flex; align-items: center; gap: 7px; font-size: 0.82rem; font-weight: 600;
-    padding: 5px 11px; border-radius: 999px; border: 1px solid var(--cp-border);
-  }
-  .status-chip .led { width: 9px; height: 9px; border-radius: 50%; background: var(--cp-success); }
-  .status-ok { color: var(--cp-success); }
-  .status-ok .led { background: var(--cp-success); }
-  .status-warn { color: var(--cp-warning); }
-  .status-warn .led { background: var(--cp-warning); }
-  .status-bad { color: var(--cp-danger); }
-  .status-bad .led { background: var(--cp-danger); }
+select,input[type="number"],input[type="text"]{
+  width:100%;padding:9px 12px;
+  background:var(--bg);border:1px solid var(--line);color:var(--ink);
+  border-radius:var(--r-control);font-size:14.5px;font-family:inherit;
+  transition:border-color .15s ease;
+}
+select:hover,input[type="number"]:hover,input[type="text"]:hover{border-color:var(--accent)}
+select:focus,input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
+input[type="range"]{width:100%;accent-color:var(--accent)}
 
-  details.ref { margin-top: 4px; }
-  details.ref summary {
-    cursor: pointer; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.07em;
-    color: var(--cp-text-soft); font-weight: 600; list-style: none; padding: 4px 0;
-  }
-  details.ref summary::-webkit-details-marker { display: none; }
-  details.ref summary::before { content: "▸ "; color: var(--cp-accent); }
-  details.ref[open] summary::before { content: "▾ "; }
+/* ---- segmented control ---- */
+.seg{
+  display:inline-flex;background:var(--bg);border:1px solid var(--line);
+  border-radius:var(--r-pill);padding:4px;gap:4px;
+}
+.seg button{
+  border:none;background:transparent;color:var(--muted);
+  padding:7px 18px;border-radius:var(--r-pill);cursor:pointer;
+  font-size:14px;font-family:inherit;font-weight:600;
+  transition:background .15s ease,color .15s ease;
+}
+.seg button:hover:not(.active){background:var(--sheen);color:var(--ink)}
+.seg button.active{background:var(--accent);color:var(--bg)}
+/* term-tooltip affordance on the operation-type buttons: underline only the text,
+   keep it visible on both the muted (inactive) and accent-filled (active) states */
+.seg button[data-term]{text-decoration:underline dotted;text-underline-offset:3px;text-decoration-color:var(--accent)}
+.seg button.active[data-term]{text-decoration-color:var(--bg)}
 
-  table.sku { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 0.85rem; }
-  table.sku th, table.sku td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--cp-border); }
-  table.sku th:first-child, table.sku td:first-child { text-align: left; }
-  table.sku th { color: var(--cp-text-soft); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; }
-  table.sku tr.active-sku td { background: var(--cp-accent-soft); font-weight: 600; }
-  table.sku td.mono { font-family: Consolas, "Courier New", monospace; }
+.hint{font-size:13px;color:var(--dim);margin-top:8px;line-height:1.55}
+.mono-pill{
+  display:inline-block;font-family:"Cascadia Mono",Consolas,monospace;
+  background:var(--code-bg);border:1px solid var(--line);border-radius:var(--r-inline);
+  padding:1px 6px;font-size:13px;color:var(--code-ink);
+  text-transform:none;letter-spacing:0;line-height:1.5;
+}
 
-  .formula {
-    font-family: Consolas, "Courier New", monospace; font-size: 0.82rem;
-    background: var(--cp-surface-soft); border: 1px solid var(--cp-border);
-    border-radius: 0.625rem; padding: 12px 14px; margin-top: 12px; color: var(--cp-text-muted);
-    white-space: pre-wrap; line-height: 1.6;
-  }
-  .formula b { color: var(--cp-text); }
+.estimator-fields{display:none}
+.estimator-fields.active{display:block}
 
-  footer.app { margin-top: 28px; color: var(--cp-text-soft); font-size: 0.8rem; text-align: center; line-height: 1.7; }
-  footer.app a { color: var(--cp-link); text-decoration: none; }
-  footer.app a:hover { text-decoration: underline; }
+/* ---- SKU live stats ---- */
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:18px}
+.stat{background:var(--panel2);border:1px solid var(--line);border-radius:var(--r-code);padding:12px 14px}
+.stat .k{font-size:11.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;font-weight:600}
+.stat .v{font-size:19px;font-weight:700;margin-top:2px}
 
-  /* glossary terms + tooltip popover */
-  .term {
-    border-bottom: 1px dotted var(--cp-accent);
-    cursor: help; color: inherit; white-space: nowrap;
-  }
-  .term:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: 2px; border-radius: 3px; }
-  #termPop {
-    position: absolute; z-index: 60; max-width: 300px;
-    background: var(--cp-panel-strong); border: 1px solid var(--cp-border-strong);
-    border-radius: 0.625rem; box-shadow: var(--cp-shadow);
-    padding: 12px 14px; display: none;
-  }
-  #termPop.show { display: block; }
-  #termPop .t-name { font-weight: 700; font-size: 0.86rem; margin-bottom: 5px; color: var(--cp-text); }
-  #termPop .t-def { font-size: 0.82rem; color: var(--cp-text-muted); line-height: 1.5; }
-  #termPop .t-link { display: inline-block; margin-top: 9px; color: var(--cp-link); text-decoration: none; font-weight: 600; font-size: 0.8rem; }
-  #termPop .t-link:hover { text-decoration: underline; }
+/* ---- results ---- */
+.result-hero{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px}
+@media(max-width:460px){.result-hero{grid-template-columns:1fr}}
+.hero-box{
+  border:1px solid var(--line);border-radius:var(--r-panel);
+  padding:18px 20px;background:var(--panel2);
+}
+.hero-box.accent{border-color:var(--accent);background:var(--wash-accent)}
+.hero-box .k{font-size:11.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;font-weight:600}
+.hero-box .v{font-size:32px;line-height:1.15;font-weight:700;margin-top:6px;letter-spacing:-.02em}
+.hero-box.accent .v{color:var(--accent)}
+.hero-box .sub{font-size:13px;color:var(--muted);margin-top:4px}
 
-  .glossary { display: grid; gap: 12px; margin-top: 14px; }
-  @media (min-width: 680px) { .glossary { grid-template-columns: 1fr 1fr; } }
-  .gterm { border: 1px solid var(--cp-border); border-radius: 0.625rem; padding: 12px 14px; background: var(--cp-bg-elevated); }
-  .gterm h3 { margin: 0 0 5px; font-size: 0.9rem; color: var(--cp-text); }
-  .gterm p { margin: 0 0 8px; font-size: 0.82rem; color: var(--cp-text-muted); line-height: 1.5; }
-  .gterm a { color: var(--cp-link); text-decoration: none; font-size: 0.8rem; font-weight: 600; }
-  .gterm a:hover { text-decoration: underline; }
+.kv{
+  display:flex;justify-content:space-between;align-items:baseline;
+  padding:10px 0;border-bottom:1px solid var(--line);gap:14px;
+}
+.kv:last-child{border-bottom:none}
+.kv .k{color:var(--muted);font-size:14px}
+.kv .v{font-weight:600;font-family:"Cascadia Mono",Consolas,monospace;font-size:13.5px;text-align:right}
+
+.bar-wrap{margin-top:6px}
+.bar-track{height:10px;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-pill);overflow:hidden}
+.bar-fill{height:100%;background:var(--green);border-radius:var(--r-pill);transition:width .2s ease,background .2s ease}
+
+.status-chip{
+  display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:600;
+  padding:5px 13px;border-radius:var(--r-pill);border:1px solid var(--line);background:var(--panel2);
+}
+.status-chip .led{width:8px;height:8px;border-radius:50%;background:var(--green);flex:none}
+.status-ok{color:var(--green)}
+.status-ok .led{background:var(--green)}
+.status-warn{color:var(--amber);background:var(--wash-amber)}
+.status-warn .led{background:var(--amber)}
+.status-bad{color:var(--red);background:var(--wash-red)}
+.status-bad .led{background:var(--red)}
+
+/* ---- disclosure sections ---- */
+details.ref summary{
+  cursor:pointer;font-size:12px;text-transform:uppercase;letter-spacing:.14em;
+  color:var(--accent);font-weight:700;list-style:none;padding:2px 0;
+}
+details.ref summary::-webkit-details-marker{display:none}
+details.ref summary::before{content:"▸ "}
+details.ref[open] summary::before{content:"▾ "}
+details.ref summary:hover{text-decoration:underline}
+
+table.sku{width:100%;border-collapse:collapse;font-size:14.5px;margin-top:16px}
+table.sku th,table.sku td{text-align:right;padding:10px 13px;border-bottom:1px solid var(--line)}
+table.sku th:first-child,table.sku td:first-child{text-align:left}
+table.sku th{
+  font-size:12.5px;text-transform:uppercase;letter-spacing:.06em;
+  background:var(--panel2);color:var(--muted);font-weight:600;
+}
+table.sku tbody tr:hover{background:var(--row-hover)}
+table.sku tbody tr:last-child td{border-bottom:none}
+table.sku tr.active-sku td{background:var(--wash-accent);color:var(--accent);font-weight:700}
+table.sku td.mono{font-family:"Cascadia Mono",Consolas,monospace;font-size:13.5px}
+
+.formula{
+  font-family:"Cascadia Mono",Consolas,monospace;font-size:13px;line-height:1.7;
+  background:var(--code-bg);border:1px solid var(--line);border-radius:var(--r-code);
+  padding:16px 18px;color:var(--code-block);white-space:pre-wrap;overflow-x:auto;
+}
+.formula b{color:var(--ink);font-weight:700}
+
+footer.app{
+  margin-top:44px;padding-top:24px;border-top:1px solid var(--line);
+  color:var(--dim);font-size:13px;text-align:center;line-height:1.7;
+}
+
+/* ---- glossary terms + tooltip popover ---- */
+.term{
+  border-bottom:1px dotted var(--accent);cursor:help;color:inherit;
+  white-space:nowrap;border-radius:3px;transition:background .15s ease;
+}
+.term:hover{background:var(--sheen)}
+#termPop{
+  position:absolute;z-index:60;max-width:320px;
+  background:var(--panel2);border:1px solid var(--accent);border-radius:var(--r-code);
+  padding:14px 16px;display:none;
+}
+#termPop.show{display:block}
+#termPop .t-name{font-weight:700;font-size:14px;margin-bottom:6px;color:var(--ink)}
+#termPop .t-def{font-size:13px;color:var(--muted);line-height:1.55}
+#termPop .t-link{display:inline-block;margin-top:10px;font-weight:600;font-size:13px}
+
+.glossary{display:grid;gap:12px;margin-top:16px}
+@media(min-width:680px){.glossary{grid-template-columns:1fr 1fr}}
+.gterm{
+  border:1px solid var(--line);border-radius:var(--r-panel);
+  padding:14px 16px;background:var(--panel2);transition:border-color .15s ease;
+}
+.gterm:hover{border-color:var(--accent)}
+.gterm h3{margin:0 0 5px;font-size:15px;color:var(--ink)}
+.gterm p{margin:0 0 8px;font-size:13px;color:var(--muted);line-height:1.55}
+.gterm a{font-size:13px;font-weight:600}
+
+/* rhythm between result rows and the load-bar block */
+.kv+.field{margin-top:16px}
+.field+.kv{margin-top:8px}
+p.hint{margin:10px 0 0}
+
+/* ---- print: these artifacts print dark ---- */
+@media print{
+  @page{size:A3 landscape;margin:0}
+  *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important}
+  html,body{background:var(--bg) !important;color:var(--ink) !important}
+  .wrap{max-width:none;padding:0 12mm}
+  main.page{padding:8mm 0}
+  header.hero{padding:12mm 0 8mm}
+  .grid{grid-template-columns:1.05fr .95fr !important}
+  .result-hero{grid-template-columns:1fr 1fr !important}
+  .glossary{grid-template-columns:1fr 1fr !important}
+  .card,.formula,.gterm,.hero-box{break-inside:avoid}
+  h1,h2,h3{break-after:avoid}
+  thead{display:table-header-group}
+  tr{break-inside:avoid}
+  details.ref>*{display:revert}
+  a{text-decoration:none}
+}
 </style>
 </head>
 <body>
-<div class="wrap">
 
-  <header class="app">
-    <div>
-      <h1>Microsoft Fabric <span class="brand-dot">CU</span> Calculator</h1>
-      <p>Estimate <span class="term" data-term="cu" tabindex="0">Capacity Unit</span> consumption, CU‑hours, cost,
-        <span class="term" data-term="smoothing" tabindex="0">smoothing</span> load and
-        <span class="term" data-term="throttling" tabindex="0">throttling</span> exposure for
-        <span class="term" data-term="interactive" tabindex="0">interactive</span> and
-        <span class="term" data-term="background" tabindex="0">background</span> Fabric operations. All math runs in your browser.</p>
+<header class="hero">
+  <div class="wrap">
+    <div class="eyebrow">Microsoft Fabric</div>
+    <h1>Capacity Unit Calculator</h1>
+    <p>Estimate <span class="term" data-term="cu" tabindex="0">Capacity Unit</span> consumption, CU‑hours, cost,
+      <span class="term" data-term="smoothing" tabindex="0">smoothing</span> load and
+      <span class="term" data-term="throttling" tabindex="0">throttling</span> exposure for
+      <span class="term" data-term="interactive" tabindex="0">interactive</span> and
+      <span class="term" data-term="background" tabindex="0">background</span> Fabric operations.</p>
+    <div class="pills">
+      <span class="pill"><b>30 s</b> timepoints</span>
+      <span class="pill"><b>2,880</b> timepoints / day</span>
+      <span class="pill">All math runs <b>client‑side</b></span>
     </div>
-    <button class="theme-toggle" id="themeToggle" type="button">
-      <span id="themeIcon">◐</span><span id="themeLabel">Theme</span>
-    </button>
-  </header>
+  </div>
+</header>
+
+<main class="wrap page">
 
   <div class="grid">
 
     <!-- LEFT: INPUTS -->
     <div>
       <div class="card">
-        <h2>1 · Capacity &amp; Pricing</h2>
+        <h2><span class="step">1</span> Capacity &amp; Pricing</h2>
         <div class="row">
           <div class="field">
             <label for="sku">Capacity SKU</label>
@@ -283,14 +327,14 @@
           <div class="field">
             <label for="price">Price per CU‑hour (USD)</label>
             <input type="number" id="price" value="0.18" min="0" step="0.0001" />
-            <div class="hint">Auto‑filled from the region's pay‑as‑you‑go rate — edit to override. Source: <a href="https://azure.microsoft.com/pricing/details/microsoft-fabric/" target="_blank" rel="noopener">Azure Fabric pricing</a> (Retail Prices API).</div>
           </div>
         </div>
+        <div class="hint">Auto‑filled from the region's pay‑as‑you‑go rate — edit to override. Source: <a href="https://azure.microsoft.com/pricing/details/microsoft-fabric/" target="_blank" rel="noopener">Azure Fabric pricing</a> (Retail Prices API).</div>
         <div class="stats" id="skuStats"></div>
       </div>
 
       <div class="card">
-        <h2>2 · Operation Type</h2>
+        <h2><span class="step">2</span> Operation Type</h2>
         <div class="field">
           <div class="seg" id="classSeg">
             <button type="button" data-class="interactive" data-term="interactive" class="active">Interactive</button>
@@ -306,7 +350,7 @@
       </div>
 
       <div class="card">
-        <h2>3 · Workload Input</h2>
+        <h2><span class="step">3</span> Workload Input</h2>
         <div class="field">
           <label for="mode">Estimator</label>
           <select id="mode">
@@ -424,12 +468,12 @@
         <div class="kv"><span class="k"><span class="term" data-term="cusec" tabindex="0">CU(s)</span> attributed per timepoint</span><span class="v" id="r_pertp">—</span></div>
         <div class="kv"><span class="k">Capacity supplied per timepoint</span><span class="v" id="r_supply">—</span></div>
 
-        <div class="field" style="margin-top:16px;">
+        <div class="field">
           <label><span class="term" data-term="loadpct" tabindex="0">Per‑timepoint load</span> <span id="r_loadlabel" class="mono-pill">—</span></label>
           <div class="bar-wrap"><div class="bar-track"><div class="bar-fill" id="r_loadbar" style="width:0%"></div></div></div>
         </div>
 
-        <div class="kv" style="margin-top:6px;">
+        <div class="kv">
           <span class="k"><span class="term" data-term="throttling" tabindex="0">Throttling</span> status</span>
           <span class="v"><span class="status-chip status-ok" id="r_status"><span class="led"></span><span id="r_statustext">—</span></span></span>
         </div>
@@ -443,7 +487,7 @@
     </div>
   </div>
 
-  <div class="card">
+  <div class="card section">
     <details class="ref">
       <summary>SKU reference table</summary>
       <table class="sku" id="skuTable">
@@ -458,7 +502,7 @@
   <div class="card">
     <details class="ref">
       <summary>Glossary — Fabric CU terms</summary>
-      <p class="hint" style="margin-top:10px;">Hover, tap, or focus any <span class="term" data-term="cu" tabindex="0">underlined term</span> in the app for a quick definition. Full list, each linked to Microsoft Learn:</p>
+      <p class="hint">Hover, tap, or focus any <span class="term" data-term="cu" tabindex="0">underlined term</span> in the app for a quick definition. Full list, each linked to Microsoft Learn:</p>
       <div class="glossary" id="glossaryList"></div>
     </details>
   </div>
@@ -469,7 +513,7 @@
     <a href="https://azure.microsoft.com/pricing/details/microsoft-fabric/" target="_blank" rel="noopener">Fabric pricing page</a>.<br/>
     Static single‑page app · hostable on GitHub Pages · all calculations run client‑side.
   </footer>
-</div>
+</main>
 
 <script>
   "use strict";
@@ -751,8 +795,8 @@
     $("r_loadlabel").textContent = fmt(loadPct, 2) + "%";
     const bar = $("r_loadbar");
     bar.style.width = Math.min(loadPct, 100) + "%";
-    bar.style.background = loadPct >= 100 ? "var(--cp-danger)"
-      : loadPct >= 75 ? "var(--cp-warning)" : "var(--cp-success)";
+    bar.style.background = loadPct >= 100 ? "var(--red)"
+      : loadPct >= 75 ? "var(--amber)" : "var(--green)";
 
     // throttling status
     const chip = $("r_status");
@@ -831,18 +875,6 @@
   ["sku", "price", "in_cusec", "in_cuhr", "cop_in", "cop_out", "cos_ru", "cos_hr",
    "spk_cu", "spk_hr", "adf_units", "adf_min", "adf_orch", "adf_ssis"].forEach(id =>
     $(id).addEventListener("input", recompute));
-
-  // theme toggle
-  function syncThemeLabel() {
-    const t = document.documentElement.getAttribute("data-theme");
-    $("themeIcon").textContent = t === "dark" ? "☾" : "☀";
-    $("themeLabel").textContent = t === "dark" ? "Dark" : "Light";
-  }
-  $("themeToggle").addEventListener("click", () => {
-    const cur = document.documentElement.getAttribute("data-theme");
-    document.documentElement.setAttribute("data-theme", cur === "dark" ? "light" : "dark");
-    syncThemeLabel();
-  });
 
   // ---- glossary: build reference list + hover/focus/tap tooltips ----
   (function glossary() {
@@ -943,7 +975,6 @@
 
   // init
   $("classHint").textContent = "Smoothed over 5–64 min; exposed to the 10‑min (delay) and 60‑min (rejection) thresholds.";
-  syncThemeLabel();
   recompute();
 </script>
 </body>

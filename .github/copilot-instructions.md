@@ -48,12 +48,22 @@ CU-hours, cost, and throttling exposure. Entire app lives in one self-contained 
 
 ## Key conventions
 
-- **Clawpilot theme is mandatory and must not be weakened:**
-  - The theme-detect IIFE must run first; keep both `:root` and `html[data-theme="dark"]` `--cp-*`
-    variable blocks intact.
-  - **All colors use `var(--cp-*)`** — including colors set from JS (e.g. the load bar uses
-    `"var(--cp-danger)"`). Never introduce hardcoded hex/rgb/hsl values. Fonts: Segoe UI stack
-    (Consolas for mono). Cards `border-radius: 16px`, controls `0.625rem`.
+- **The deep-dark theme (`web-artifacts-builder` skill) is mandatory and must not be weakened:**
+  - **Dark-only.** There is no light variant, no theme-detect script, no `data-theme` attribute and
+    no theme toggle. Keep the `:root` palette block byte-exact.
+  - **All colors use `var(--*)`** — `--bg --panel --panel2 --line --code-bg --ink --muted --dim
+    --accent --green --red --amber --orange --code-ink --code-block` — including colors set from JS
+    (the load bar uses `"var(--red)" / "var(--amber)" / "var(--green)"`). The only permitted literals
+    are the one hero wash `linear-gradient(160deg,#131c28 0%,#0d1117 70%)` and the derived
+    `--wash-* / --row-hover` tints, which are themselves copied from the skill.
+  - Fonts: body `16px/1.6 "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif`;
+    mono `"Cascadia Mono", Consolas, monospace` at 13–13.5px. Never Inter, Geist or `system-ui`.
+  - Cards `border-radius: 14px; padding: 26px 28px`; code blocks 10px; inline code 5px; pills 999px.
+    Borders are always `1px solid var(--line)`. **No drop shadows, glassmorphism or gradients**
+    beyond the single hero wash.
+  - The skill is versioned and has changed before (it replaced an earlier light/dark "Clawpilot"
+    rose theme). **Re-read `SKILL.md` from disk before any theming work** rather than trusting cached
+    context.
 - **Adding/changing an estimator requires three synchronized edits**, or it silently breaks:
   1. an `<option value="X">` inside `#mode`,
   2. a `<div class="estimator-fields" data-est="X">` input block,

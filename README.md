@@ -12,7 +12,9 @@ consumption, CU-hours, cost, smoothing load, and throttling exposure for both **
 - **Interactive vs Background** smoothing models (5–64 min vs 24 h / 2,880 timepoints)
 - **Estimators:** direct CU-seconds / CU-hours, Copilot (tokens), Cosmos DB (RU/s), Spark (CU × time), Data Factory pipeline
 - **Outputs:** effective CU-hours, cost, per-timepoint load %, throttling status, and a step-by-step formula trace
-- Light/dark theme, SKU reference table
+- **Region-aware pricing** (64 Azure regions, USD/CU-hour, overridable)
+- **Glossary** of 18 Fabric CU terms with inline tooltips linked to Microsoft Learn
+- Dark UI, SKU reference table
 
 ## Formulas
 
