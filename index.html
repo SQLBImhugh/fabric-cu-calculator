@@ -48,6 +48,7 @@
   --r-control:8px;
   --r-inline:5px;
   --r-pill:999px;
+  --h-control:40px;   /* one height for every select and text/number input */
 }
 
 *{box-sizing:border-box}
@@ -117,13 +118,22 @@ label{display:block;font-size:13px;color:var(--dim);margin-bottom:6px;
       text-transform:uppercase;letter-spacing:.08em;font-weight:600}
 .field{margin-bottom:18px}
 .field:last-child{margin-bottom:0}
-.row{display:flex;gap:14px;flex-wrap:wrap}
-.row>.field{flex:1;min-width:140px}
+.row{display:flex;gap:14px;flex-wrap:wrap;align-items:stretch;margin-bottom:18px}
+.row:last-child{margin-bottom:0}
+/* a label that wraps to two lines must not push its control out of line with its
+   neighbours. Fields stretch to equal height and the label absorbs the slack, so
+   controls bottom-align; spacing lives on the row so every field's box matches. */
+.row>.field{flex:1;min-width:140px;display:flex;flex-direction:column;margin-bottom:0}
+.row>.field>label{flex:1 0 auto}
 
 select,input[type="number"],input[type="text"]{
   width:100%;padding:9px 12px;
   background:var(--bg);border:1px solid var(--line);color:var(--ink);
   border-radius:var(--r-control);font-size:14.5px;font-family:inherit;
+  /* select and input resolve their intrinsic height differently (42px vs 40px in
+     Chrome) and select ignores line-height, so pin one control height for both */
+  height:var(--h-control);
+  line-height:1.4;
   transition:border-color .15s ease;
 }
 select:hover,input[type="number"]:hover,input[type="text"]:hover{border-color:var(--accent)}
