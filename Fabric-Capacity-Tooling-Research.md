@@ -68,6 +68,55 @@ capacityId`; paused capacities flush all smoothed CU on resume, producing false 
 
 One-click deploy: `jumpstart.fabric.microsoft.com/catalog/fpm-capacity-events/`
 
+## 2b. FUAM's own CU footprint — measured
+
+Measured 2026-09-01 against the live `EmbeddedMon-Accelerator` deployment
+(tenant `MngEnvMCAP777813`, workspace `5cffbecd-9608-494b-984e-46bf4f774e12`) by querying FUAM's own
+`capacity_metrics_by_item_by_operation_by_day` table over `executeQueries`. FUAM measures itself.
+
+Extract window 2026-07-02 → 07-15; the FUAM workspace shows activity on **5 days**:
+
+| Date | CU(s) | Operations | Note |
+|---|--:|--:|---|
+| 2026-07-09 | 15,111.9 | 10,508 | initial deployment |
+| 2026-07-10 | 23,116.2 | 16,357 | peak — repair session |
+| 2026-07-11 | 6,873.4 | 1,981 | post-repair |
+| 2026-07-14 | 5,731.9 | 1,158 | quietest full day |
+| 2026-07-15 | 10,289.0 | 3,403 | CU analysis queries |
+| **Total** | **61,122.4** | **33,407** | |
+
+Where it goes (whole window):
+
+| Item kind | Operation | CU(s) | Share |
+|---|---|--:|--:|
+| Lakehouse | OneLake Other Operations Via Redirect | 21,481.0 | 35.1% |
+| SynapseNotebook | Notebook Pipeline Run | 19,644.4 | 32.1% |
+| Pipeline | DataMovement | 5,400.0 | 8.8% |
+| Pipeline | ActivityRun | 4,757.8 | 7.8% |
+| SynapseNotebook | Notebook Scheduled Run | 3,377.0 | 5.5% |
+| Dataset | Query | 1,192.9 | 2.0% |
+| Lakehouse | OneLake Write via Redirect | 1,016.2 | 1.7% |
+
+Against a daily budget:
+
+| SKU | Peak day (23,116 CU(s)) | Quiet day (5,732 CU(s)) |
+|---|--:|--:|
+| **F2** (172,800 CU(s)/day) | **13.4%** | **3.3%** |
+| **F64** (5,529,600 CU(s)/day) | 0.42% | 0.10% |
+
+For comparison, Workspace Monitoring's always-on core measured ~2,110 CU(s)/day ≈ **1.2% of an F2**
+(`D:\Copilot\PBIEmbeddedMonitoring\docs\architecture.md`). So FUAM costs roughly **3–11× Workspace
+Monitoring** depending on the day.
+
+**Read these as deployment-period numbers, not steady state.** July 9–10 include the initial full
+extraction and a repair session where the pipeline was re-run repeatedly by hand; the deployment was
+never put on a schedule and has been dormant since (last model refresh 2026-07-14). A production FUAM
+running one scheduled pipeline pass per day should sit nearer the July 11/14 figures
+(~5,700–6,900 CU(s)/day ≈ 3.3–4.0% of an F2). FUAM was 0.8% of all tenant CU in the window.
+
+The takeaway for a small capacity: FUAM is **not free on an F2** — budget several percent of the daily
+budget before any user workload, and prefer a daily schedule over frequent runs. On F64+ it is noise.
+
 ## 3. Existing solutions
 
 | Tool | Owner | Stars | What it is |
@@ -138,3 +187,23 @@ the discovery work for either path.
 - Admin Monitoring Workspace (preview) — Learn does not enumerate its capacity reports.
 - Metrics App semantic model table names are community-sourced; verify against a live tenant with
   `INFO.VIEW.TABLES()` or `$SYSTEM.TMSCHEMA_TABLES` before relying on them.
+- FUAM's steady-state cost on a daily schedule is still unmeasured — the figures in §2b cover a
+  deployment and repair period. Re-run the query in §2b after FUAM has run scheduled for a week.
+
+## Verified access notes (2026-09-01)
+
+- `powerbi-design` MCP (`list_workspaces`, `list_reports`) reaches the **demo tenant**
+  (`MngEnvMCAP777813`); the retired `powerbi-remote`/FabricIQ was bound to **msit** and could not see it.
+- `powerbi-design-get_semantic_model_schema` failed on every model tried (`FUAM_Core_SM`, `FUAM_Item_SM`
+  and the Metrics App) with the same `DatasetExecuteQueriesError` / `AnalysisServicesErrorCode
+  3239575574`, while hand-built `executeQueries` DAX against the same models worked — so the failure is
+  in that tool's introspection query, not the models.
+- **XMLA needs dedicated capacity.** `powerbi-modeling-mcp ConnectFabric` to the Metrics App workspace
+  failed with "does not have permission to call the Discover method" because that workspace is Pro, not
+  on capacity. The REST `executeQueries` path has no such requirement.
+- Working pattern used here: `az account get-access-token --resource https://analysis.windows.net/powerbi/api`
+  then `POST /v1.0/myorg/groups/{ws}/datasets/{ds}/executeQueries`. Semantic model *names* differ from
+  report names (`FUAM_Core_Report` → `FUAM_Core_SM`); list them via `/groups/{ws}/datasets`.
+- In FUAM's model the `workspaces` table has no active relationship to
+  `capacity_metrics_by_item_by_operation_by_day`, so `SUMMARIZECOLUMNS` over both collapses to one
+  total. Group by `[WorkspaceId]` and map names separately.
