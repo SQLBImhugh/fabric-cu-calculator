@@ -140,6 +140,43 @@ select:hover,input[type="number"]:hover,input[type="text"]:hover{border-color:va
 select:focus,input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
 input[type="range"]{width:100%;accent-color:var(--accent)}
 
+[hidden]{display:none !important}
+
+/* ---- Metrics App import ---- */
+textarea{
+  width:100%;padding:9px 12px;
+  background:var(--bg);border:1px solid var(--line);color:var(--ink);
+  border-radius:var(--r-control);font-family:"Cascadia Mono",Consolas,monospace;
+  font-size:13px;line-height:1.5;resize:vertical;min-height:92px;
+  transition:border-color .15s ease,background .15s ease;
+}
+textarea:hover{border-color:var(--accent)}
+textarea:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
+textarea.drag{border-color:var(--accent);background:var(--wash-accent)}
+input[type="file"]{
+  width:100%;font-size:13px;color:var(--muted);font-family:inherit;
+  background:var(--bg);border:1px solid var(--line);
+  border-radius:var(--r-control);padding:8px 10px;
+}
+input[type="file"]::file-selector-button{
+  font-family:inherit;font-size:13px;font-weight:600;margin-right:10px;cursor:pointer;
+  background:var(--panel2);color:var(--accent);border:1px solid var(--line);
+  border-radius:var(--r-inline);padding:5px 12px;
+}
+input[type="file"]::file-selector-button:hover{border-color:var(--accent)}
+.imp-sum{
+  margin-top:14px;border:1px solid var(--line);border-radius:var(--r-code);
+  background:var(--panel2);padding:12px 14px;
+}
+.imp-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:8px}
+.imp-head .k{font-size:11.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);font-weight:600}
+.imp-head .v{font-family:"Cascadia Mono",Consolas,monospace;font-weight:700;color:var(--accent);font-size:14px}
+.imp-sum table{width:100%;border-collapse:collapse;font-size:12.5px}
+.imp-sum td{padding:5px 0;border-bottom:1px solid var(--line);color:var(--muted)}
+.imp-sum tr:last-child td{border-bottom:none}
+.imp-sum td+td{text-align:right;font-family:"Cascadia Mono",Consolas,monospace;color:var(--ink);white-space:nowrap;padding-left:12px}
+.imp-err{color:var(--red);font-size:13px;margin-top:10px}
+
 /* ---- segmented control ---- */
 .seg{
   display:inline-flex;background:var(--bg);border:1px solid var(--line);
@@ -366,6 +403,7 @@ p.hint{margin:10px 0 0}
           <select id="mode">
             <option value="cusec">Direct — Total CU‑seconds</option>
             <option value="cuhr">Direct — CU‑hours</option>
+            <option value="import">Import — Metrics App export (CSV)</option>
             <option value="copilot">Copilot (tokens)</option>
             <option value="cosmos">Cosmos DB (RU/s × time)</option>
             <option value="spark">Apache Spark (vCores × time)</option>
@@ -386,6 +424,37 @@ p.hint{margin:10px 0 0}
             <label for="in_cuhr">CU‑hours</label>
             <input type="number" id="in_cuhr" value="78.4" min="0" step="any" />
           </div>
+        </div>
+
+        <div class="estimator-fields" data-est="import">
+          <div class="field">
+            <label for="imp_file">Metrics App export (CSV or TSV)</label>
+            <input type="file" id="imp_file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain" />
+            <div class="hint">Export any Metrics App table — the <span class="term" data-term="timepoint" tabindex="0">timepoint</span>
+              operations tables, or the Compute page matrix by item and operation — then load the file here or paste it below.
+              Nothing is uploaded; the file is parsed in your browser.</div>
+          </div>
+          <div class="field">
+            <label for="imp_text">…or paste rows, including the header line</label>
+            <textarea id="imp_text" rows="5" spellcheck="false" placeholder="Workspace,Item name,Operation,Total CU(s)
+Sales,Daily refresh,Dataset refresh,148230
+Finance,Exec dashboard,Query,9820"></textarea>
+          </div>
+          <div class="row" id="imp_cols" hidden>
+            <div class="field">
+              <label for="imp_cu"><span class="term" data-term="cusec" tabindex="0">CU(s)</span> column</label>
+              <select id="imp_cu"></select>
+            </div>
+            <div class="field">
+              <label for="imp_group">Group by</label>
+              <select id="imp_group"></select>
+            </div>
+            <div class="field">
+              <label for="imp_hours">Period covered (hours)</label>
+              <input type="number" id="imp_hours" min="0" step="any" placeholder="336 = 14 days" />
+            </div>
+          </div>
+          <div id="imp_out"></div>
         </div>
 
         <div class="estimator-fields" data-est="copilot">
@@ -726,6 +795,224 @@ p.hint{margin:10px 0 0}
     if (!isFinite(n)) return "—";
     return "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 });
   }
+  // the formula trace is written with innerHTML, so anything derived from an
+  // imported file must be escaped before it goes into a note
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, c =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  // ---- Metrics App export import (CSV / TSV, parsed client-side) ----
+  const IMPORT = { headers: [], rows: [], numericCols: [], total: 0, count: 0, error: "" };
+
+  function detectDelimiter(text) {
+    const line = text.split(/\r?\n/).find(l => l.trim() !== "") || "";
+    const counts = { ",": 0, "\t": 0, ";": 0, "|": 0 };
+    let inQ = false;
+    for (const c of line) {
+      if (c === '"') { inQ = !inQ; continue; }
+      if (!inQ && c in counts) counts[c]++;
+    }
+    return Object.keys(counts).reduce((a, b) => (counts[b] > counts[a] ? b : a), ",");
+  }
+
+  // RFC4180-style: honours quoted fields containing delimiters, newlines and "" escapes
+  function parseDelimited(text) {
+    text = text.replace(/^\uFEFF/, "");
+    const d = detectDelimiter(text);
+    const rows = [];
+    let row = [], field = "", inQ = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (inQ) {
+        if (c === '"') {
+          if (text[i + 1] === '"') { field += '"'; i++; }
+          else inQ = false;
+        } else field += c;
+        continue;
+      }
+      if (c === '"') { inQ = true; continue; }
+      if (c === d) { row.push(field); field = ""; continue; }
+      if (c === "\r") continue;
+      if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; continue; }
+      field += c;
+    }
+    if (field !== "" || row.length) { row.push(field); rows.push(row); }
+    return rows.filter(r => r.some(v => v.trim() !== ""));
+  }
+
+  // tolerates thousands separators and both 1,234.56 and 1.234,56 conventions
+  function parseNumber(s) {
+    if (s == null) return NaN;
+    let t = String(s).replace(/[\s\u00A0]/g, "");
+    if (!t || /^[-–—]+$/.test(t)) return NaN;
+    t = t.replace(/[^\d.,+\-eE]/g, "");
+    if (!t) return NaN;
+    const lc = t.lastIndexOf(","), ld = t.lastIndexOf(".");
+    if (lc > -1 && ld > -1) t = lc > ld ? t.replace(/\./g, "").replace(",", ".") : t.replace(/,/g, "");
+    else if (lc > -1) t = /^-?\d{1,3}(,\d{3})+$/.test(t) ? t.replace(/,/g, "") : t.replace(",", ".");
+    const n = Number(t);
+    return isFinite(n) ? n : NaN;
+  }
+
+  const normHdr = h => String(h).toLowerCase().replace(/[^a-z0-9]/g, "");
+  const CU_TESTS = [
+    s => s === "totalcus" || s === "totalcuseconds" || s === "totalcapacityunitseconds",
+    s => s === "cus" || s === "cuseconds" || s === "cu",
+    s => s.startsWith("totalcu"),
+    s => s.includes("capacityunit") && s.includes("second"),
+    s => s.includes("cus"),
+    s => s.includes("cu")
+  ];
+  const GROUP_TESTS = ["itemname", "item", "operationname", "operation", "workspacename", "workspace", "itemkind", "user"];
+
+  function analyzeImport(text) {
+    IMPORT.headers = []; IMPORT.rows = []; IMPORT.numericCols = [];
+    IMPORT.total = 0; IMPORT.count = 0; IMPORT.error = "";
+    if (!text || !text.trim()) return;
+
+    const table = parseDelimited(text);
+    if (table.length < 2) { IMPORT.error = "Need a header line plus at least one data row."; return; }
+
+    const headers = table[0].map(h => h.trim());
+    const width = headers.length;
+    const rows = table.slice(1).filter(r => r.length >= Math.min(2, width));
+
+    // a column counts as numeric when most of its non-empty values parse as numbers
+    const numeric = headers.map((_, c) => {
+      let seen = 0, ok = 0;
+      for (const r of rows) {
+        const v = (r[c] ?? "").trim();
+        if (!v) continue;
+        seen++; if (!isNaN(parseNumber(v))) ok++;
+      }
+      return seen > 0 && ok / seen >= 0.8;
+    });
+
+    IMPORT.headers = headers; IMPORT.rows = rows; IMPORT.numericCols = numeric;
+    if (!numeric.some(Boolean)) { IMPORT.error = "No numeric column found — is this a Metrics App export?"; return; }
+
+    const norms = headers.map(normHdr);
+    let cuCol = -1;
+    for (const t of CU_TESTS) {
+      cuCol = norms.findIndex((n, i) => numeric[i] && t(n));
+      if (cuCol > -1) break;
+    }
+    if (cuCol < 0) cuCol = numeric.findIndex(Boolean);
+
+    let groupCol = -1;
+    for (const want of GROUP_TESTS) {
+      groupCol = norms.findIndex((n, i) => !numeric[i] && n === want);
+      if (groupCol > -1) break;
+    }
+    if (groupCol < 0) groupCol = norms.findIndex((n, i) => !numeric[i]);
+
+    const cuSel = $("imp_cu"), grpSel = $("imp_group");
+    cuSel.innerHTML = ""; grpSel.innerHTML = "";
+    headers.forEach((h, i) => {
+      const label = (h || `Column ${i + 1}`) + (numeric[i] ? "" : "  (text)");
+      const a = document.createElement("option");
+      a.value = String(i); a.textContent = label; cuSel.appendChild(a);
+      const b = document.createElement("option");
+      b.value = String(i); b.textContent = label; grpSel.appendChild(b);
+    });
+    const none = document.createElement("option");
+    none.value = "-1"; none.textContent = "(no breakdown)";
+    grpSel.insertBefore(none, grpSel.firstChild);
+
+    cuSel.value = String(cuCol);
+    grpSel.value = String(groupCol);
+    $("imp_cols").hidden = false;
+  }
+
+  function computeImport(baseCU) {
+    const out = $("imp_out");
+    out.textContent = "";
+    if (IMPORT.error) {
+      const p = document.createElement("div");
+      p.className = "imp-err"; p.textContent = IMPORT.error;
+      out.appendChild(p);
+      IMPORT.total = 0; IMPORT.count = 0;
+      return;
+    }
+    if (!IMPORT.rows.length) { IMPORT.total = 0; IMPORT.count = 0; return; }
+
+    const cuCol = +$("imp_cu").value;
+    const grpCol = +$("imp_group").value;
+    let total = 0, used = 0;
+    const groups = new Map();
+    for (const r of IMPORT.rows) {
+      const v = parseNumber(r[cuCol]);
+      if (isNaN(v)) continue;
+      total += v; used++;
+      if (grpCol >= 0) {
+        const k = (r[grpCol] ?? "").trim() || "(blank)";
+        groups.set(k, (groups.get(k) || 0) + v);
+      }
+    }
+    IMPORT.total = total; IMPORT.count = used;
+
+    const box = document.createElement("div");
+    box.className = "imp-sum";
+    const head = document.createElement("div");
+    head.className = "imp-head";
+    const k = document.createElement("span");
+    k.className = "k";
+    k.textContent = `${used.toLocaleString()} of ${IMPORT.rows.length.toLocaleString()} rows summed`;
+    const v = document.createElement("span");
+    v.className = "v";
+    v.textContent = fmt(total) + " CU(s)";
+    head.appendChild(k); head.appendChild(v);
+    box.appendChild(head);
+
+    if (groups.size) {
+      const top = [...groups.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+      const tbl = document.createElement("table");
+      for (const [name, cus] of top) {
+        const tr = document.createElement("tr");
+        const td1 = document.createElement("td");
+        td1.textContent = name.length > 46 ? name.slice(0, 45) + "…" : name;
+        const td2 = document.createElement("td");
+        const pct = total > 0 ? (cus / total) * 100 : 0;
+        td2.textContent = `${fmt(cus)}  (${fmt(pct, 1)}%)`;
+        tr.appendChild(td1); tr.appendChild(td2); tbl.appendChild(tr);
+      }
+      box.appendChild(tbl);
+    }
+
+    // A multi-day export is an aggregate, not one smoothing window. CU-hours and
+    // cost stay correct, but per-timepoint load would pretend the whole total
+    // landed in a single window — so show the true average over the period.
+    const hours = +$("imp_hours").value || 0;
+    if (hours > 0 && total > 0) {
+      const avgCU = total / (hours * 3600);
+      const avgPct = baseCU > 0 ? (avgCU / baseCU) * 100 : 0;
+      const t2 = document.createElement("table");
+      const tr = document.createElement("tr");
+      const a = document.createElement("td");
+      a.textContent = `Average utilization over ${fmt(hours)} h`;
+      const b = document.createElement("td");
+      b.textContent = `${fmt(avgCU, 3)} CU  (${fmt(avgPct, 2)}% of ${skuSel.value})`;
+      tr.appendChild(a); tr.appendChild(b); t2.appendChild(tr);
+      box.appendChild(t2);
+    }
+    out.appendChild(box);
+
+    if (hours > TP_SECONDS * TP_PER_DAY / 3600) {
+      const w = document.createElement("div");
+      w.className = "hint";
+      w.textContent = "This export spans more than 24 h, so it aggregates many smoothing windows. " +
+        "Effective CU‑hours and cost are accurate; the per‑timepoint load and throttling status below " +
+        "assume the whole total lands in one window — read the average above instead.";
+      out.appendChild(w);
+    }
+  }
+
+  function loadImportText(text) {
+    analyzeImport(text);
+    if (IMPORT.error || !IMPORT.rows.length) $("imp_cols").hidden = true;
+    recompute();
+  }
 
   // ---- compute Total CU-seconds from the active estimator ----
   function getTotalCUSeconds() {
@@ -733,6 +1020,13 @@ p.hint{margin:10px 0 0}
     switch (mode) {
       case "cusec": return { cus: +$("in_cusec").value || 0, note: "Direct CU‑seconds input." };
       case "cuhr":  return { cus: (+$("in_cuhr").value || 0) * SEC_PER_HOUR, note: "CU‑hours × 3600." };
+      case "import": {
+        if (IMPORT.error) return { cus: 0, note: esc(IMPORT.error) };
+        if (!IMPORT.count) return { cus: 0, note: "No Metrics App export loaded yet." };
+        const col = IMPORT.headers[+$("imp_cu").value] || "CU(s)";
+        return { cus: IMPORT.total,
+          note: `sum of "${esc(col)}" over ${fmt(IMPORT.count, 0)} imported rows = ${fmt(IMPORT.total)} CU(s)` };
+      }
       case "copilot": {
         const ti = +$("cop_in").value || 0, to = +$("cop_out").value || 0;
         const cus = (ti / 1000) * 100 + (to / 1000) * 400;
@@ -778,6 +1072,9 @@ p.hint{margin:10px 0 0}
     // highlight active SKU row
     document.querySelectorAll("#skuTable tbody tr").forEach(tr =>
       tr.classList.toggle("active-sku", tr.dataset.sku === skuSel.value));
+
+    // the import summary depends on the SKU, and must settle before its total is read
+    if ($("mode").value === "import") computeImport(baseCU);
 
     const { cus, note } = getTotalCUSeconds();
     const effCUh = cus / SEC_PER_HOUR;
@@ -885,6 +1182,52 @@ p.hint{margin:10px 0 0}
   ["sku", "price", "in_cusec", "in_cuhr", "cop_in", "cop_out", "cos_ru", "cos_hr",
    "spk_cu", "spk_hr", "adf_units", "adf_min", "adf_orch", "adf_ssis"].forEach(id =>
     $(id).addEventListener("input", recompute));
+
+  // ---- import wiring: file picker, paste, drag-and-drop, column overrides ----
+  (function importWiring() {
+    const ta = $("imp_text");
+
+    function readFile(file) {
+      if (!file) return;
+      // the Metrics App names exports like "Items (14 days).csv" — use that as the period
+      const m = /\((\d+(?:\.\d+)?)\s*(day|days|hour|hours|hr|hrs|h)\)/i.exec(file.name || "");
+      if (m) {
+        const n = parseFloat(m[1]);
+        $("imp_hours").value = /^h|^hour|^hr/i.test(m[2]) ? n : n * 24;
+      }
+      const fr = new FileReader();
+      fr.onload = () => {
+        const text = String(fr.result || "");
+        ta.value = text.length > 400000 ? text.slice(0, 400000) : text;
+        loadImportText(ta.value);
+      };
+      fr.onerror = () => {
+        IMPORT.error = "Could not read that file.";
+        recompute();
+      };
+      fr.readAsText(file);
+    }
+
+    $("imp_file").addEventListener("change", e => readFile(e.target.files && e.target.files[0]));
+
+    let t = null;
+    ta.addEventListener("input", () => {
+      clearTimeout(t);
+      t = setTimeout(() => loadImportText(ta.value), 250);
+    });
+
+    ["dragenter", "dragover"].forEach(ev =>
+      ta.addEventListener(ev, e => { e.preventDefault(); ta.classList.add("drag"); }));
+    ["dragleave", "dragend", "drop"].forEach(ev =>
+      ta.addEventListener(ev, () => ta.classList.remove("drag")));
+    ta.addEventListener("drop", e => {
+      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f) { e.preventDefault(); readFile(f); }
+    });
+
+    ["imp_cu", "imp_group"].forEach(id => $(id).addEventListener("change", recompute));
+    $("imp_hours").addEventListener("input", recompute);
+  })();
 
   // ---- glossary: build reference list + hover/focus/tap tooltips ----
   (function glossary() {

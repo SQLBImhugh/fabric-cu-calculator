@@ -69,7 +69,21 @@ CU-hours, cost, and throttling exposure. Entire app lives in one self-contained 
   2. a `<div class="estimator-fields" data-est="X">` input block,
   3. a `case "X":` in `getTotalCUSeconds()`.
   Background-only estimators (Copilot, Cosmos, Spark, ADF) auto-force the Background class via the
-  `backgroundModes` list in the `#mode` change handler.
+  `backgroundModes` list in the `#mode` change handler. The `import` estimator is deliberately not in
+  that list — an export can be either class.
+- **The `import` estimator parses Metrics App CSV/TSV exports client-side.** `parseDelimited()` is
+  RFC4180-style (quoted fields, `""` escapes, BOM strip, comma/tab/semicolon/pipe auto-detect) and
+  `parseNumber()` handles both `1,234.56` and `1.234,56`. The CU column is auto-detected by normalised
+  header (`CU (s)`, `Total CU(s)`, …) restricted to columns that are ≥80% numeric, so `Duration (s)` is
+  never picked; the user can override both it and the group-by column. `IMPORT` holds the parsed state
+  and `recompute()` calls `computeImport(baseCU)` **before** `getTotalCUSeconds()` reads its total.
+  A multi-day export aggregates many smoothing windows, so when "period covered" is set the summary
+  shows true average utilization and warns that per-timepoint load assumes a single window; the period
+  is auto-filled from filenames like `Items (14 days).csv`.
+- **`r_formula` is written with `innerHTML`**, so any string reaching a `note` must be escaped with
+  `esc()`. Imported column headers are attacker-controlled if a user opens someone else's CSV.
+- **Never commit `*.csv`** — Metrics App exports carry workspace, item and user names. `.gitignore`
+  blocks them.
 - **Smoothing constants encode Fabric's model — don't change without doc backing:**
   `TP_SECONDS = 30`, `TP_PER_DAY = 2880` (24 h), interactive smoothing `10–128` timepoints (5–64 min),
   `SEC_PER_HOUR = 3600`. Core invariants:

@@ -1,1 +1,5 @@
 .playwright-mcp/
+
+# Metrics App exports contain tenant data (workspace, item and user names).
+# Keep them local — never commit them.
+*.csv
