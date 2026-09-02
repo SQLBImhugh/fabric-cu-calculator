@@ -131,6 +131,17 @@ After a few daily passes, re-run the §2b query filtered to
 `WorkspaceId = "5CFFBECD-9608-494B-984E-46BF4F774E12"` and read the days that contain exactly one
 scheduled run. Ignore 2026-09-01: it includes a manual validation run plus the repair.
 
+Runs so far:
+
+| Start (UTC) | Invoke | Duration |
+|---|---|--:|
+| 2026-09-01 00:38 | Manual (validation) | 20.2 min |
+| 2026-09-02 05:00 | **Scheduled** | 26.8 min |
+
+Both completed and wrote data — after the second run `MaxMetricDate` reached 2026-09-02, workspaces 295,
+activities 25,111. 2026-09-02 still carries the catch-up from seven weeks dormant, so the first clean
+single-run day is **2026-09-03**.
+
 Note FUAM reports its own capacity metrics one day in arrears, and its extract window follows the
 Metrics App's 14-day limit.
 
@@ -144,7 +155,7 @@ version, and still the repo's current one):
 | Repo items present in workspace | 51 / 51 |
 | DataPipelines, normalised JSON with GUIDs masked | **17 / 17 identical** |
 | Notebooks, code cells only | **21 / 24 identical** |
-| Workspace folders | **0 of 18 created** — items are flat |
+| Workspace folders | **0 of 18 created** — items are flat (fixed, see §3d) |
 | Extra items | 3, all from the July repair |
 
 **Three notebooks had been created but never filled** — they contained only the
@@ -184,8 +195,46 @@ reports success either way.
   `NullReferenceException` on these endpoints; `Invoke-RestMethod` is reliable, except when you need
   response headers for the LRO `Location`, where `-UseBasicParsing` is required.
 
-## 3. Existing solutions
+## 3d. Workspace folders (2026-09-02)
 
+The deployment had **no folders** — all 63 items sat flat. `deployment_config.yaml` defines the intended
+layout under its `folders:` key, so it was rebuilt from that: **17 folders, 56 of 63 items filed.**
+
+Created with `POST /v1/workspaces/{ws}/folders`, then each item moved with
+`POST /v1/workspaces/{ws}/items/{itemId}/move` and body `{"targetFolderId": "..."}`. Moving an item does
+not change its id, so pipeline references and the schedule survive untouched (verified afterwards).
+
+| Folder | Items | Folder | Items |
+|---|--:|---|--:|
+| Reporting | 10 | Domains | 2 |
+| Maintenance | 6 | Git Connections | 2 |
+| Capacity Metrics | 4 | Inventory | 2 |
+| Tenant Settings | 4 | Optimization Module | 2 |
+| WidelyShared | 4 | Tags | 2 |
+| Others | 4 | Workspaces | 2 |
+| Activities | 3 | Capacity Refreshables | 2 |
+| Deployment | 3 | Capacities | 2 |
+| Active Items | 2 | | |
+
+Three points worth knowing:
+
+- **The config lists `Optimization Module` twice** — once holding `00_Run_Optimization_Module_for_SM_Unit`
+  and again holding `01_Run_Optimization_Module_for_SM_Unit` plus `Load_Optimization_Module_E2E`. Only the
+  `01_` notebook is deployed, so the `00_` reference is dead. Merge the two entries; creating both raises
+  a duplicate-name error.
+- **SQL endpoints follow their lakehouse automatically.** Moving `FUAM_Config_Lakehouse` also moved its
+  `SQLEndpoint`, which is why Deployment shows 3 items where the config lists 2 (likewise Maintenance 6/5,
+  Others 4/3). 53 explicit moves + 3 inherited = 56.
+- **`POST .../move` throttles at HTTP 429** after roughly 50 rapid calls, and PowerShell surfaces it as an
+  empty error string. Retry with backoff and read the status code, or the moves look like silent failures.
+
+Seven items remain at root, all correctly: `Load_FUAM_Data_E2E` (the master orchestrator) and
+`FUAM_Lakehouse` + its SQL endpoint are not in any config folder; `FabricWorkspaceMonitoring`
+(KQLDashboard) is not a FUAM item; and `Align_FUAM_Model_Schema`, `Ensure_FUAM_Tables`,
+`Export_FUAM_Evidence` are the July repair's own additions, so leaving them at root keeps the
+non-standard items visible.
+
+## 3. Existing solutions
 | Tool | Owner | Stars | What it is |
 |---|---|---|---|
 | **FUAM** `microsoft/fabric-toolbox/monitoring/fabric-unified-admin-monitoring` | MS CAT team, **not supported** | 894 | Tenant monitoring. Ingests Metrics App via DAX into a Lakehouse, beats the 14/30-day cap. Monthly releases. Added a Semantic Model Optimization module (BPA + VertiPaq on top CU consumers). |
