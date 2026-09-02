@@ -280,6 +280,33 @@ Workspace is now **61 items**: 51 repo items, 4 SQL endpoints, the KQL dashboard
 retained repair notebook. Archived copies of all three notebooks are in the session workspace under
 `files/fuam-repair-notebooks/`.
 
+## 3f. FUAM reports hide deleted workspaces (2026-09-02)
+
+Found while capturing a side-by-side diagnosis walkthrough: FUAM's **Item Outlier Analysis** page
+rendered an empty table for 2026-07-04, a day whose capacity chart showed a 5,520% CU peak.
+
+The data is not missing. A direct DAX query against
+`capacity_metrics_by_item_by_operation_by_day` returns **17 item/operation rows and 250,761 CU(s)** for
+that date, topped by an `LlmPlugin` **AI Query at 13,177 CU(s)** over 18 operations — a genuine high-CU
+event on an F2.
+
+The table is empty because **100% of that day's CU belongs to workspaces since deleted**, and
+`FUAM_Core_Report` carries a report-level filter named *Is Capacity Deleted* on
+`capacities[fuam_deleted]` (confirmed by reading the report definition: 7 `fuam_deleted` references
+across `report.json` and two visuals). In this tenant **146 of 295 workspaces** are flagged deleted,
+nearly all short-lived `autorunner_*` automation workspaces. For comparison, 0% of 2026-09-01's CU maps
+to a deleted workspace, so that day renders normally.
+
+Consequence for anyone evaluating FUAM: if the workload creates and destroys workspaces — CI runs,
+per-customer provisioning, ephemeral test environments — **the long history is retained in the Lakehouse
+but invisible in the reports.** Recovering it requires querying the tables directly, which is what the
+Lakehouse SQL endpoint and `executeQueries` are for. This strengthens rather than weakens the case for
+FUAM's queryable storage, but it means the reports alone understate historical consumption.
+
+Method note: `SUMMARIZECOLUMNS` over `workspaces` and the metrics fact collapses to a single total
+because the relationship is inactive (see §3d). Group by `[WorkspaceId]` in the fact and join to the
+dimension outside DAX.
+
 ## 3. Existing solutions
 | Tool | Owner | Stars | What it is |
 |---|---|---|---|
