@@ -234,6 +234,52 @@ Seven items remain at root, all correctly: `Load_FUAM_Data_E2E` (the master orch
 `Export_FUAM_Evidence` are the July repair's own additions, so leaving them at root keeps the
 non-standard items visible.
 
+## 3e. Retiring the July repair notebooks (2026-09-02)
+
+The three non-repo notebooks were reviewed once `Init_FUAM_Lakehouse_Tables` was restored:
+
+| Notebook | Purpose | Outcome |
+|---|---|---|
+| `Ensure_FUAM_Tables` | Read `table_definitions.snappy.parquet`, `CREATE TABLE IF NOT EXISTS` per table | **Deleted** — duplicates the restored `Init_FUAM_Lakehouse_Tables` |
+| `Export_FUAM_Evidence` | Row-count 7 tables, write a CSV to `Files/evidence/` | **Deleted** — diagnostic only |
+| `Align_FUAM_Model_Schema` | Add the optional columns the fixed TMDL expects; normalise `workspaces.tags` | **Kept** as a break-glass recovery tool |
+
+Evidence for deletion, all checked rather than assumed:
+
+- **No pipeline references any of them** — all 17 pipeline definitions were scanned for both the display
+  names and the item GUIDs. They were orphaned, never part of the scheduled flow.
+- **The schema fix has held.** All ten optional columns (`sensitivityLabel.labelId`, `tags`,
+  `upstreamDataflows`, `connectionDetails.*`, `directQueryRefreshSchedule.*`) are present and survived two
+  full pipeline runs, so `Align` has nothing outstanding to repair.
+- **Two were already broken by the rename.** `Ensure_FUAM_Tables` and `Export_FUAM_Evidence` hardcoded
+  `ws_name = "EmbeddedMon-Accelerator"` and built `abfss://` paths from it. `Align` used GUIDs, so it
+  still worked.
+
+`Align_FUAM_Model_Schema` is worth keeping: it is defensive (preflight for case-insensitive column
+collisions, Delta version guard against concurrent writes, row-count check after the change) and it is
+idempotent — the `overwrite` branch that rewrites `workspaces`/`capacities` is skipped when the `tags`
+column already has the expected `ArrayType<Struct>`. It is the only remedy if those columns regress.
+
+It was made portable: cell 0 previously hardcoded this workspace's and lakehouse's GUIDs, and now
+resolves both at run time.
+
+```python
+ctx = notebookutils.runtime.context
+workspace_id = ctx.get("currentWorkspaceId")
+lakehouse_id = notebookutils.lakehouse.get("FUAM_Lakehouse")["id"]   # falls back to defaultLakehouseId
+```
+
+Both calls were verified in this workspace before the edit by running a throwaway notebook that wrote
+its result to OneLake — `currentWorkspaceId`, `defaultLakehouseId` and `lakehouse.get(name)["id"]` all
+returned the correct values. Notebook stdout is **not** retrievable from
+`GET .../jobs/instances/{id}` (it returns status only, and the snapshot endpoints 404), so writing the
+result to OneLake Files and reading it back over the DFS API is the practical way to get output from an
+API-triggered notebook run.
+
+Workspace is now **61 items**: 51 repo items, 4 SQL endpoints, the KQL dashboard, and the single
+retained repair notebook. Archived copies of all three notebooks are in the session workspace under
+`files/fuam-repair-notebooks/`.
+
 ## 3. Existing solutions
 | Tool | Owner | Stars | What it is |
 |---|---|---|---|
