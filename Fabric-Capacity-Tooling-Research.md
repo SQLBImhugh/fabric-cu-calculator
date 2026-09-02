@@ -117,6 +117,73 @@ running one scheduled pipeline pass per day should sit nearer the July 11/14 fig
 The takeaway for a small capacity: FUAM is **not free on an F2** — budget several percent of the daily
 budget before any user workload, and prefer a daily schedule over frequent runs. On F64+ it is noise.
 
+### Steady-state measurement in progress (started 2026-09-01)
+
+The July figures above cover a deployment and repair period. To get a real steady-state number the
+deployment was repaired and put on a schedule:
+
+- Workspace renamed `EmbeddedMon-Accelerator` → **`FUAM`** (matches `deployment_config.yaml`).
+- Three placeholder notebooks repaired from the repo (see §3b).
+- `Load_FUAM_Data_E2E` scheduled **daily at 05:00 UTC** (schedule `d4f85d37-db7c-44dc-89ee-3ba69d4e6587`,
+  30-day window). It had **no schedule and no run history** before this.
+
+After a few daily passes, re-run the §2b query filtered to
+`WorkspaceId = "5CFFBECD-9608-494B-984E-46BF4F774E12"` and read the days that contain exactly one
+scheduled run. Ignore 2026-09-01: it includes a manual validation run plus the repair.
+
+Note FUAM reports its own capacity metrics one day in arrears, and its extract window follows the
+Metrics App's 14-day limit.
+
+## 3b. Deployment defects found by the parity check (2026-09-01)
+
+Compared the live deployment against `microsoft/fabric-toolbox` at version **2026.6.1** (the deployed
+version, and still the repo's current one):
+
+| Check | Result |
+|---|---|
+| Repo items present in workspace | 51 / 51 |
+| DataPipelines, normalised JSON with GUIDs masked | **17 / 17 identical** |
+| Notebooks, code cells only | **21 / 24 identical** |
+| Workspace folders | **0 of 18 created** — items are flat |
+| Extra items | 3, all from the July repair |
+
+**Three notebooks had been created but never filled** — they contained only the
+`# Welcome to your new notebook` placeholder. Their item description read `Created by fab`, whereas
+every correctly deployed notebook reads `Imported from fab`:
+
+| Notebook | Was | Repaired to |
+|---|--:|--:|
+| `Init_FUAM_Lakehouse_Tables` | 75 chars | 64,483 |
+| `01_FUAM_Lakehouse_Backup` | 75 chars | 2,314 |
+| `02_FUAM_Lakehouse_Optimization` | 75 chars | 663 |
+
+This is almost certainly the root cause of the July incident ("Lakehouse lacks optional columns
+required by the fixed FUAM TMDL"): `Init_FUAM_Lakehouse_Tables` builds the schema and was empty. The
+Lakehouse has 61 tables today only because the July repair added a compensating `Ensure_FUAM_Tables`
+notebook. Both Maintenance notebooks were also empty, so backup and optimization silently did nothing.
+
+Repaired by pushing repo content via
+`POST /v1/workspaces/{ws}/items/{id}/updateDefinition?updateMetadata=false` with a base64 `ipynb` part.
+`Init_FUAM_Lakehouse_Tables` carries no lakehouse metadata by design — it binds by name through
+`%%configure { "defaultLakehouse": { "name": "FUAM_Lakehouse" } }`; the other two were repointed at this
+workspace's `FUAM_Lakehouse` id.
+
+**Check any FUAM deployment for this.** A notebook whose description is `Created by fab` rather than
+`Imported from fab`, or whose definition is ~75 characters, was never populated. The deploying pipeline
+reports success either way.
+
+## 3c. Repo vs deployment: comparison method
+
+- Notebook definitions come back from `getDefinition` as a **long-running operation** (202 + `Location`,
+  poll to `Succeeded`, then `GET {location}/result`). Pipelines return 200 inline. Treating notebooks
+  like pipelines yields an empty body and a false "DIFF".
+- Repo notebooks are `notebook-content.ipynb`, not `.py`; request `?format=ipynb` to compare like for like.
+- Compare **code cells only** — ipynb metadata, `known_lakehouses` and per-deployment GUIDs differ by design.
+- Mask GUIDs before diffing pipelines, otherwise all 17 appear different.
+- In PowerShell 5.1, `Invoke-WebRequest` inside a `-File` script can throw
+  `NullReferenceException` on these endpoints; `Invoke-RestMethod` is reliable, except when you need
+  response headers for the LRO `Location`, where `-UseBasicParsing` is required.
+
 ## 3. Existing solutions
 
 | Tool | Owner | Stars | What it is |
