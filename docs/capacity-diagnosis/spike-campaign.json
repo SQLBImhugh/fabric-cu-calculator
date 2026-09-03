@@ -1,0 +1,41 @@
+{
+  "total_query_seconds": 4158,
+  "campaign_end_utc": "2026-09-03T04:49:16Z",
+  "target_workspace": "FUAM",
+  "campaign_start_utc": "2026-09-03T04:37:39Z",
+  "target_dataset": "FUAM_Core_SM",
+  "operation_class": "Interactive - Query",
+  "bursts": [
+    {
+      "end": "04:37:54",
+      "queries": 84,
+      "rows": "2M",
+      "query_seconds": 172,
+      "start": "04:37:39"
+    },
+    {
+      "queries": 240,
+      "end": "04:39:10",
+      "query_seconds": 351,
+      "note": "120 throttled at the 120/min cap",
+      "start": "04:38:37",
+      "rows": "3M"
+    },
+    {
+      "end": "04:42:02",
+      "queries": 120,
+      "rows": "10M",
+      "query_seconds": 1241,
+      "start": "04:39:54"
+    },
+    {
+      "end": "04:49:16",
+      "queries": 120,
+      "rows": "25M",
+      "query_seconds": 2394,
+      "start": "04:42:34"
+    }
+  ],
+  "capacity": "Trial-Central64 (FTL64)",
+  "dataset_id": "3c98c64f-2835-4caf-b03e-3a01dc0955d6"
+}

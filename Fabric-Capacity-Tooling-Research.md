@@ -307,6 +307,60 @@ Method note: `SUMMARIZECOLUMNS` over `workspaces` and the metrics fact collapses
 because the relationship is inactive (see §3d). Group by `[WorkspaceId]` in the fact and join to the
 dimension outside DAX.
 
+## 3g. Generating a reproducible CU spike for testing (2026-09-03)
+
+Built to produce a traceable high-CU event on demand. Method: fire many **unique** pure-CPU DAX queries
+at one semantic model through the Power BI `executeQueries` REST API.
+
+```dax
+EVALUATE ROW("x", SUMX(GENERATESERIES(1, 25000000), SQRT([Value]) * SIN([Value])))
+```
+
+Two failures worth knowing, both hit on the first attempts:
+
+- **Identical queries are cached.** The first burst reused one query string; the engine returned a
+  cached result in ~2 s instead of ~9 s and burned almost no CU. Vary a literal per query
+  (`GENERATESERIES(i+1, ROWS+i)`) or the load test measures nothing.
+- **`executeQueries` is capped at 120 requests per minute per user.** A burst of 240 returned exactly
+  120 successes and 120 HTTP 429s. Back off and retry, or stay under the cap. This confirms the
+  documented limit in §2.
+
+Result on an FTL64: 564 queries / 4,158 query-seconds over ~12 minutes produced **peak utilization
+204.65%**, one timepoint at **201.74% of base capacity** from interactive alone, and **419% cumulative
+carryforward** with 2.1 minutes to burn down — without tripping throttling, because bursting absorbed it.
+
+### What the diagnosis walkthrough showed
+
+- The Health page still read **Healthy** at 3× normal load with zero rejections. The signal was the
+  one-hour average (26.50%) against the seven-day baseline (8.01%), plus P95 interactive delay at 72.
+- On the **14-day** item list the offending model sat fourth and looked unremarkable. Only after
+  filtering the ribbon chart to a single day did it become the clear top consumer at 58,588 CU(s),
+  3× the next item. Filtering to the day is the step that makes the item list diagnostic.
+- Exceeding 100% of base capacity is **not** the same as being throttled; the throttling tab showed the
+  10-minute interactive percentage stopping near 90% of its threshold.
+- FUAM recorded 58,348.8 CU against the Metrics App's 58,588.4 (0.4% apart) — but only because its
+  05:00 UTC run happened to fall 11 minutes after the burst. An hour later and it would have been a day
+  behind.
+
+## 3h. Metrics App semantic model — verified table list (2026-09-03)
+
+The research above flagged that Metrics App table names were community-sourced. They are now verified:
+`executeQueries` against the Metrics App model (`Fabric Capacity Metrics`) returns **111 tables**,
+including `Capacities`, `Items`, `Metrics By Item And Operation`, `Metrics By Item Operation And Hour`,
+`Timepoint Interactive Detail`, `Timepoint Background Detail`, `Timepoint Interactive Summary`,
+`Usage Summary By Capacities (Last 1 hour / 24 hours / 7 days)`, `Surge Protection By Day`,
+`Items Throttled`, `System Events` and `Storage By Workspaces And Day`.
+
+`Timepoint Interactive Detail` carries `Total CU (s)`, `Timepoint CU (s)`, `% of base capacity`,
+`Throttling (s)`, `User`, `Operation`, `Operation Id`, `Status` and `Billing type` — the per-operation
+grain the report shows.
+
+**Caveat that matters:** most of these tables are DirectQuery and return **empty** over `executeQueries`
+unless the model's `MPARAMETER` values (`CapacitiesList`, `RegionName`, `TimePoint`) are injected in the
+query. Schema introspection via `INFO.VIEW.TABLES()` works without them; data does not. This is the
+`MPARAMETER` pattern documented in `DataChant/BI-Pixie-Skills`. Use the report UI, or inject the
+parameters, rather than assuming the model is empty.
+
 ## 3. Existing solutions
 | Tool | Owner | Stars | What it is |
 |---|---|---|---|
