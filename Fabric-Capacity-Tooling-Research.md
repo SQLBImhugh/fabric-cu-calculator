@@ -249,6 +249,55 @@ steady-state section above.
 Note FUAM reports its own capacity metrics one day in arrears, and its extract window follows the
 Metrics App's 14-day limit.
 
+## 2d. What FUAM actually depends on (2026-09-09)
+
+Verified by reading the deployed pipeline parameters and notebook source, not from documentation.
+
+**Only the Capacity Metrics module needs the Metrics App.** `Load_Capacity_Metrics_E2E` declares:
+
+```
+metric_workspace     = 42fe4109-…   (the Capacity Metrics App workspace)
+metric_dataset       = a57adbf4-…   (its semantic model)
+metric_days_in_scope = 2
+```
+
+and its three notebooks call `fabric.evaluate_dax(workspace=metric_workspace, dataset=metric_dataset, …)`.
+So FUAM's capacity data is re-extracted from the semantic model Microsoft documents as unsupported
+(§1). The notebook carries five schema variants — `dax_query_v53 / v47 / v44 / v40 / v37` — and probes
+each in turn to detect the installed version, which is why FUAM's changelog pins to app versions.
+
+**The other ~72% of FUAM does not touch it.** Inventory, Workspaces, Activities, Tenant Settings, Git
+Connections, Domains, Tags and WidelyShared read Fabric/Power BI admin REST APIs. Evidence: in July,
+Capacity Metrics was empty while FUAM still loaded 199 workspaces, 91 reports, 86 models and 8,477
+activities.
+
+Failure handling differs by where it breaks, and one path is quiet:
+
+| Failure | Code | Effect |
+|---|---|---|
+| No schema version matches | `raise Exception(...)` | notebook fails |
+| Connects, cannot list capacities | `notebookutils.notebook.exit(...)` | **exits cleanly — pipeline still reports Completed** |
+
+The second path is how a green pipeline ends up with no capacity data, which is what the July
+deployment looked like.
+
+**Capacity requirements are two separate things.**
+
+- **FUAM itself requires a Fabric capacity** — Spark notebooks, pipelines, Lakehouse and Direct Lake
+  models are all capacity workloads. That is the 12,695 CU(s)/day measured above.
+- **The Metrics App workspace does not need dedicated capacity for FUAM to read it.** FUAM uses SemPy
+  `evaluate_dax` → `executeQueries`, not XMLA. Confirmed directly: XMLA against that workspace was
+  refused with *"does not have permission to call the Discover method"* (XMLA requires dedicated
+  capacity) while `executeQueries` against the same model succeeded.
+
+The Metrics App's own prerequisites still apply — installed by a **capacity admin**, and it reports
+**F-SKUs only**. July's empty capacity metrics were not a capacity-assignment problem: the trial
+capacity was not exposed and both F2s were suspended, so there was nothing to report.
+
+**Consequence for the cost decision.** Dropping the Capacity Metrics module (27.9% of FUAM's cost)
+leaves FUAM working as a governance and inventory tool and removes the only part that depends on an
+unsupported, version-pinned schema. Cost and fragility come off together.
+
 ## 3b. Deployment defects found by the parity check (2026-09-01)
 
 Compared the live deployment against `microsoft/fabric-toolbox` at version **2026.6.1** (the deployed
