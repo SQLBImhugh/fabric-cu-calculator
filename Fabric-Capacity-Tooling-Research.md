@@ -249,7 +249,7 @@ steady-state section above.
 Note FUAM reports its own capacity metrics one day in arrears, and its extract window follows the
 Metrics App's 14-day limit.
 
-## 2d. What FUAM actually depends on (2026-09-09)
+## 2c. What FUAM actually depends on (2026-09-09)
 
 Verified by reading the deployed pipeline parameters and notebook source, not from documentation.
 
@@ -297,6 +297,20 @@ capacity was not exposed and both F2s were suspended, so there was nothing to re
 **Consequence for the cost decision.** Dropping the Capacity Metrics module (27.9% of FUAM's cost)
 leaves FUAM working as a governance and inventory tool and removes the only part that depends on an
 unsupported, version-pinned schema. Cost and fragility come off together.
+
+## 3. Existing solutions
+| Tool | Owner | Stars | What it is |
+|---|---|---|---|
+| **FUAM** `microsoft/fabric-toolbox/monitoring/fabric-unified-admin-monitoring` | MS CAT team, **not supported** | 894 | Tenant monitoring. Ingests Metrics App via DAX into a Lakehouse, beats the 14/30-day cap. Monthly releases. Added a Semantic Model Optimization module (BPA + VertiPaq on top CU consumers). |
+| **BI-Pixie-Skills** `DataChant/BI-Pixie-Skills/plugins/fabric-capacity` | Community | 0 | `capacity-model-guide.md` — best schema map of the Metrics App + Chargeback models anywhere, incl. the `MPARAMETER` pattern. 15 ready `.dax` files. `run_dax.py` runner. Works on a **Pro** licence. |
+| **fabric-architecture-review** `microsoft/fabric-architecture-review` | Microsoft official | 14 | Python collector; auto-discovers the Metrics App dataset, fires DAX probes via `executeQueries`, incl. `INFO.VIEW.TABLES()`. JSON output. |
+| **semantic-link-labs** `microsoft/semantic-link-labs` | Microsoft (M. Kovalsky) | 571 | Capacity CRUD + **surge protection rule read/write**. Does *not* query the Metrics App model. |
+| **fabric-dw-query-capacity-correlation** `mariyaali/…` | Community | 0 | PBIP joining capacity utilization to Warehouse Query Insights — "which query caused the spike?" |
+| **Rayfin capacity governance** `bradcoles-dev/rayfin-fabric-capacity-metrics` | Community | 0 | Replacement UI on Eventhouse with alert rules. Alerting backend **cannot deploy** — Fabric rejects Functions. |
+| **Fabric Cost Analysis** `microsoft/fabric-toolbox/monitoring/fabric-cost-analysis` | MS | — | Azure spend (FOCUS), not CU. Complement to FUAM. |
+
+Deprecated: `RuiRomano/pbimonitor` (260★) — README redirects to FUAM.
+Obsolete: `RuiRomano/pbipremiumcapacitymetricsquery` — targets the pre-Fabric Premium schema.
 
 ## 3b. Deployment defects found by the parity check (2026-09-01)
 
@@ -513,20 +527,6 @@ unless the model's `MPARAMETER` values (`CapacitiesList`, `RegionName`, `TimePoi
 query. Schema introspection via `INFO.VIEW.TABLES()` works without them; data does not. This is the
 `MPARAMETER` pattern documented in `DataChant/BI-Pixie-Skills`. Use the report UI, or inject the
 parameters, rather than assuming the model is empty.
-
-## 3. Existing solutions
-| Tool | Owner | Stars | What it is |
-|---|---|---|---|
-| **FUAM** `microsoft/fabric-toolbox/monitoring/fabric-unified-admin-monitoring` | MS CAT team, **not supported** | 894 | Tenant monitoring. Ingests Metrics App via DAX into a Lakehouse, beats the 14/30-day cap. Monthly releases. Added a Semantic Model Optimization module (BPA + VertiPaq on top CU consumers). |
-| **BI-Pixie-Skills** `DataChant/BI-Pixie-Skills/plugins/fabric-capacity` | Community | 0 | `capacity-model-guide.md` — best schema map of the Metrics App + Chargeback models anywhere, incl. the `MPARAMETER` pattern. 15 ready `.dax` files. `run_dax.py` runner. Works on a **Pro** licence. |
-| **fabric-architecture-review** `microsoft/fabric-architecture-review` | Microsoft official | 14 | Python collector; auto-discovers the Metrics App dataset, fires DAX probes via `executeQueries`, incl. `INFO.VIEW.TABLES()`. JSON output. |
-| **semantic-link-labs** `microsoft/semantic-link-labs` | Microsoft (M. Kovalsky) | 571 | Capacity CRUD + **surge protection rule read/write**. Does *not* query the Metrics App model. |
-| **fabric-dw-query-capacity-correlation** `mariyaali/…` | Community | 0 | PBIP joining capacity utilization to Warehouse Query Insights — "which query caused the spike?" |
-| **Rayfin capacity governance** `bradcoles-dev/rayfin-fabric-capacity-metrics` | Community | 0 | Replacement UI on Eventhouse with alert rules. Alerting backend **cannot deploy** — Fabric rejects Functions. |
-| **Fabric Cost Analysis** `microsoft/fabric-toolbox/monitoring/fabric-cost-analysis` | MS | — | Azure spend (FOCUS), not CU. Complement to FUAM. |
-
-Deprecated: `RuiRomano/pbimonitor` (260★) — README redirects to FUAM.
-Obsolete: `RuiRomano/pbipremiumcapacitymetricsquery` — targets the pre-Fabric Premium schema.
 
 ## 4. MCP / agent integration
 
