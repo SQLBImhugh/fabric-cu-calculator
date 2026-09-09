@@ -299,9 +299,13 @@ cancelled, invalid and rejected counts and max throttling minutes.</span></div><
 </div>
 
 <div class="warn">
-  <b>FUAM is not free.</b> Measured on this deployment, its own pipeline consumed 61,122 CU(s) across
-  five active days, peaking at 23,116 CU(s) &mdash; 13.4% of an F2's daily budget, 0.42% of an F64's.
-  On a small capacity, budget for it before installing.
+  <b>FUAM is not free.</b> Measured over six consecutive scheduled days on this deployment, its own
+  pipeline consumes a steady <b>12,695 CU(s) per day</b> &mdash; <b>7.35% of an F2's</b> entire daily
+  budget, 3.67% of an F4, 1.84% of an F8, and 0.23% of an F64. That is roughly <b>6&times; Workspace
+  Monitoring</b> and about $19/month of consumed CU at East US rates. The single biggest component is
+  the <i>Capacity Metrics</i> module at <b>27.9%</b> &mdash; the part that duplicates what the Metrics
+  App already shows for 14 days. On F16 and above FUAM is noise; on an F2 or F4, run it every two or
+  three days or drop that module.
 </div>
 
 <footer>

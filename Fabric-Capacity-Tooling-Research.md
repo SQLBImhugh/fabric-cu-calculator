@@ -105,42 +105,146 @@ Against a daily budget:
 | **F64** (5,529,600 CU(s)/day) | 0.42% | 0.10% |
 
 For comparison, Workspace Monitoring's always-on core measured ~2,110 CU(s)/day ≈ **1.2% of an F2**
-(`D:\Copilot\PBIEmbeddedMonitoring\docs\architecture.md`). So FUAM costs roughly **3–11× Workspace
-Monitoring** depending on the day.
+(`D:\Copilot\PBIEmbeddedMonitoring\docs\architecture.md`). On these July figures FUAM looked like
+3–11× Workspace Monitoring depending on the day; the measured steady-state multiple is **6×**.
 
 **Read these as deployment-period numbers, not steady state.** July 9–10 include the initial full
 extraction and a repair session where the pipeline was re-run repeatedly by hand; the deployment was
-never put on a schedule and has been dormant since (last model refresh 2026-07-14). A production FUAM
-running one scheduled pipeline pass per day should sit nearer the July 11/14 figures
-(~5,700–6,900 CU(s)/day ≈ 3.3–4.0% of an F2). FUAM was 0.8% of all tenant CU in the window.
+never put on a schedule and has been dormant since (last model refresh 2026-07-14). FUAM was 0.8% of
+all tenant CU in the window. **A prediction made here — that a scheduled FUAM would sit near
+~5,700–6,900 CU(s)/day, 3.3–4.0% of an F2 — turned out to be wrong by roughly 2×. See the steady-state
+section below.**
+
+### Steady state — measured over six scheduled days (2026-09-09)
+
+`Load_FUAM_Data_E2E` ran **daily at 05:00 UTC, seven consecutive days, all Completed**, 21–28 minutes
+each. Six days carry exactly one scheduled run and no other activity, so they are the clean sample.
+2026-09-02 is excluded (it contains the deliberately generated 58,588 CU spike from §3g plus a manual
+run) and 09-09 is partial.
+
+| Date | FUAM CU(s) | Tenant CU(s) | FUAM share | Pipeline |
+|---|--:|--:|--:|--:|
+| 2026-09-03 | 15,338.6 | 65,854.8 | 23.3% | 21.1 min |
+| 2026-09-04 | 12,779.6 | 83,660.5 | 15.3% | 27.8 min |
+| 2026-09-05 | 11,137.9 | 103,316.9 | 10.8% | 27.5 min |
+| 2026-09-06 | 12,612.3 | 79,286.7 | 15.9% | 28.2 min |
+| 2026-09-07 | 11,835.2 | 70,501.9 | 16.8% | 27.3 min |
+| 2026-09-08 | 12,464.4 | 71,856.9 | 17.3% | 26.1 min |
+
+**Mean 12,695 CU(s)/day** (min 11,138, max 15,339, sd 1,305). Excluding 09-03, which ran short:
+**12,166 CU(s)/day**. The run is remarkably consistent — a ±5% band once warm.
+
+| SKU | Daily budget CU(s) | FUAM steady state |
+|---|--:|--:|
+| **F2** | 172,800 | **7.35%** |
+| **F4** | 345,600 | 3.67% |
+| **F8** | 691,200 | 1.84% |
+| F16 | 1,382,400 | 0.92% |
+| F32 | 2,764,800 | 0.46% |
+| **F64** | 5,529,600 | **0.23%** |
+
+3.53 CU-hours/day ⇒ **$0.63/day, $19.04/month, $232/year** at East US $0.18/CU-hour. Against an F2
+provisioned 24×7 ($259.20/month) that is 7.3% of the bill; against an F64 ($8,294/month), 0.2%.
+
+FUAM consumed **16.1% of all CU in this tenant** over the sample — though the tenant is quiet
+(79,080 CU(s)/day mean), so read that as "FUAM is significant relative to a small workload", not as a
+general figure.
+
+### Two corrections to the July analysis
+
+1. **The prediction was ~2× too low.** Steady state is 12,695 CU(s)/day, not the 5,700–6,900 predicted.
+2. **"Deployment period inflation" was largely wrong.** July's mean was 61,122 ÷ 5 = **12,224 CU(s)/day**
+   — within 4% of the measured steady state of 12,695. What the deployment period actually changed was
+   *variance*, not level: July swung from 5,732 to 23,116, while the scheduled runs hold 11,138–15,339.
+   The honest summary is that FUAM costs about 12,000–13,000 CU(s)/day whenever it is doing a full pass,
+   and July looked erratic only because the passes were manual and irregular.
+
+Composition has shifted, though. In July, Lakehouse OneLake operations led at 35.1% with notebooks at
+32.1% — the signature of an initial bulk load. In steady state notebooks dominate:
+
+| Kind | CU(s)/day | Share |
+|---|--:|--:|
+| SynapseNotebook (19 items) | 8,543 | 70.2% |
+| Pipeline (15 items) | 2,791 | 22.9% |
+| Lakehouse (2 items) | 832 | 6.8% |
+
+### Where the cost actually sits, by module
+
+Rolled up using the deployed folder as the module name (09-04 → 09-08):
+
+| Module | CU(s)/day | Share |
+|---|--:|--:|
+| **Capacity Metrics** | **3,397** | **27.9%** |
+| Inventory | 1,593 | 13.1% |
+| Workspaces | 1,224 | 10.1% |
+| Activities | 966 | 7.9% |
+| (root — orchestrator + Lakehouse) | 905 | 7.4% |
+| Capacity Refreshables | 669 | 5.5% |
+| Others | 557 | 4.6% |
+| Capacities | 539 | 4.4% |
+| Git Connections | 515 | 4.2% |
+| Tenant Settings | 491 | 4.0% |
+| WidelyShared | 433 | 3.6% |
+| Active Items | 411 | 3.4% |
+| Tags | 243 | 2.0% |
+| Domains | 223 | 1.8% |
+
+Single most expensive notebooks: `01_Transfer_Incremental_Inventory_Unit` (1,573/day),
+`01_Transfer_CapacityMetricData_Timepoints_Unit` (1,383/day),
+`03_Transfer_CapacityMetricData_ItemOperation_Unit` (1,015/day).
+
+**The Capacity Metrics module alone is 27.9% of FUAM's cost** — and it is the module that duplicates
+what the Metrics App already shows for 14 days. Its value is history beyond that window and SQL access;
+if neither is needed, dropping it takes FUAM from 7.04% to **5.07% of an F2**.
+
+Two levers, measured rather than estimated:
+
+| Change | CU(s)/day | F2 | F8 | $/month |
+|---|--:|--:|--:|--:|
+| Daily (as configured) | 12,166 | 7.04% | 1.76% | $18.25 |
+| Every 2 days | 6,083 | 3.52% | 0.88% | $9.12 |
+| Every 3 days | 4,055 | 2.35% | 0.59% | $6.08 |
+| Weekly | 1,738 | 1.01% | 0.25% | $2.61 |
+| Daily, minus Capacity Metrics | 8,769 | 5.07% | 1.27% | $13.15 |
+
+For comparison, Workspace Monitoring's always-on core measured ~2,110 CU(s)/day ≈ **1.2% of an F2**
+(`D:\Copilot\PBIEmbeddedMonitoring\docs\architecture.md`). So a daily FUAM costs about **6× Workspace
+Monitoring**, not the 3–11× range estimated from the July data.
+
+**Recommendation.** On F16 and above FUAM is noise (<1%) — run it daily. On an F8 it is 1.8%, still
+comfortable. On an **F2 or F4** it is 7.4% / 3.7% of the entire daily budget before any user workload,
+which is real money on a small capacity: run it every 2–3 days, or drop the Capacity Metrics module if
+the 14-day Metrics App window is enough.
+
+### Method note — Direct Lake served a stale frame
+
+The first pass of this analysis reported no FUAM data after 2026-09-03 and looked like a broken
+pipeline. It was not: `FUAM_Core_SM` is Direct Lake and served an **old frame**. Its refresh history
+shows no framing since 2026-07-14, yet re-running the identical query minutes later returned data
+through 09-09. The Lakehouse **SQL analytics endpoint was staler still**, showing nothing after
+2026-07-15 — its metadata sync lags the Delta tables.
+
+So three views of the same Delta table disagreed at the same instant. When FUAM appears to have stopped
+collecting, re-query before concluding anything, and confirm against `MAX([Date])` on the fact table
+rather than a filtered slice.
 
 The takeaway for a small capacity: FUAM is **not free on an F2** — budget several percent of the daily
 budget before any user workload, and prefer a daily schedule over frequent runs. On F64+ it is noise.
 
-### Steady-state measurement in progress (started 2026-09-01)
+### How the steady-state measurement was set up (2026-09-01)
 
-The July figures above cover a deployment and repair period. To get a real steady-state number the
-deployment was repaired and put on a schedule:
+To get a real steady-state number the dormant deployment was repaired and scheduled:
 
 - Workspace renamed `EmbeddedMon-Accelerator` → **`FUAM`** (matches `deployment_config.yaml`).
 - Three placeholder notebooks repaired from the repo (see §3b).
 - `Load_FUAM_Data_E2E` scheduled **daily at 05:00 UTC** (schedule `d4f85d37-db7c-44dc-89ee-3ba69d4e6587`,
   30-day window). It had **no schedule and no run history** before this.
 
-After a few daily passes, re-run the §2b query filtered to
-`WorkspaceId = "5CFFBECD-9608-494B-984E-46BF4F774E12"` and read the days that contain exactly one
-scheduled run. Ignore 2026-09-01: it includes a manual validation run plus the repair.
-
-Runs so far:
-
-| Start (UTC) | Invoke | Duration |
-|---|---|--:|
-| 2026-09-01 00:38 | Manual (validation) | 20.2 min |
-| 2026-09-02 05:00 | **Scheduled** | 26.8 min |
-
-Both completed and wrote data — after the second run `MaxMetricDate` reached 2026-09-02, workspaces 295,
-activities 25,111. 2026-09-02 still carries the catch-up from seven weeks dormant, so the first clean
-single-run day is **2026-09-03**.
+To repeat the measurement, query `capacity_metrics_by_item_by_operation_by_day` filtered to
+`WorkspaceId = "5CFFBECD-9608-494B-984E-46BF4F774E12"`, group by `[Date]`, and keep only days holding
+exactly one scheduled run. Exclude 2026-09-01 and 09-02 (manual runs, catch-up after seven weeks
+dormant, and the §3g spike) and the current day, which is always partial. Results are in the
+steady-state section above.
 
 Note FUAM reports its own capacity metrics one day in arrears, and its extract window follows the
 Metrics App's 14-day limit.
@@ -429,9 +533,12 @@ the discovery work for either path.
 - Whether the Metrics App exposes a stable internal timepoint endpoint worth wrapping (unverified).
 - Admin Monitoring Workspace (preview) — Learn does not enumerate its capacity reports.
 - Metrics App semantic model table names are community-sourced; verify against a live tenant with
-  `INFO.VIEW.TABLES()` or `$SYSTEM.TMSCHEMA_TABLES` before relying on them.
-- FUAM's steady-state cost on a daily schedule is still unmeasured — the figures in §2b cover a
-  deployment and repair period. Re-run the query in §2b after FUAM has run scheduled for a week.
+  `INFO.VIEW.TABLES()` or `$SYSTEM.TMSCHEMA_TABLES` before relying on them. **(Resolved — see §3h.)**
+- ~~FUAM's steady-state cost on a daily schedule is still unmeasured.~~ **Measured 2026-09-09 over six
+  scheduled days: 12,695 CU(s)/day, 7.35% of an F2, 0.23% of an F64. See §2b.**
+- Whether FUAM's cost scales with tenant size. This sample is one quiet tenant (315 workspaces,
+  ~79,000 CU(s)/day). The Inventory and Workspaces modules are 23% of FUAM's cost and both scale with
+  item count, so a larger tenant should cost proportionally more — unverified.
 
 ## Verified access notes (2026-09-01)
 
