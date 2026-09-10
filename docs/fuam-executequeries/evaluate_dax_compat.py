@@ -41,6 +41,7 @@ with
     evaluate_dax_compat(metric_workspace, metric_dataset, q)
 """
 
+import re
 import time
 
 import pandas as pd
@@ -54,6 +55,9 @@ import sempy.fabric as fabric
 # incomplete capacity metrics.
 _MAX_ROWS = 100_000
 _MAX_VALUES = 1_000_000
+
+# A real date or time carries one of these; a key such as '20260908' does not.
+_DATE_SEPARATOR = re.compile(r"[-/:]")
 
 
 def _evaluate_dax_rest(workspace: str, dataset: str, dax_string: str,
@@ -116,22 +120,30 @@ def _coerce_datetime_columns(df: pd.DataFrame) -> pd.DataFrame:
     """Restore datetime dtypes that the JSON round-trip flattened to strings.
 
     XMLA returns date columns as datetime64[ns]; the REST endpoint returns them
-    as strings. FUAM feeds the frame straight into spark.createDataFrame and
-    appends to a Delta table, so leaving them as strings would write a
-    conflicting column type -- TimePoint in particular.
+    as strings (in this tenant as '9/8/2026 12:00:00 AM'). FUAM feeds the frame
+    straight into spark.createDataFrame and appends to a Delta table, so leaving
+    them as strings would write a conflicting column type -- TimePoint and Date
+    in particular.
 
-    Only object columns are considered, and a column is converted only if every
-    non-null value parses. GUID columns (CapacityId, ItemId, WorkspaceId) fail
-    that test and are left alone.
+    A column is converted only when every non-null value parses AND contains a
+    date or time separator. That second test matters: FUAM's DateKey column is
+    the string '20260908', which pandas will happily parse as a date, but which
+    the Metrics App returns as a string over XMLA too. Converting it would break
+    the Delta append with DELTA_FAILED_TO_MERGE_FIELDS. GUID columns
+    (CapacityId, ItemId, WorkspaceId) fail the all-values-parse test and are
+    likewise left alone.
     """
     for column in df.columns:
         if df[column].dtype != object:
             continue
-        non_null = df[column].notna().sum()
-        if non_null == 0:
+        non_null = df[column].dropna()
+        if non_null.empty:
+            continue
+        # a bare digit run such as '20260908' is a key, not a date
+        if not non_null.astype(str).str.contains(_DATE_SEPARATOR).all():
             continue
         parsed = pd.to_datetime(df[column], errors="coerce")
-        if parsed.notna().sum() == non_null:
+        if parsed.notna().sum() == df[column].notna().sum():
             df[column] = parsed
     return df
 

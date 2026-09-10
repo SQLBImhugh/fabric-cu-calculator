@@ -62,19 +62,30 @@ notebooks and replayed verbatim.
 
 The helper in this folder was pasted verbatim into a notebook in the FUAM workspace and run against
 the live Capacity Metrics app, alongside the existing XMLA call, then pushed through FUAM's real
-downstream path — positional rename, `spark.createDataFrame`, Delta append.
+downstream path for **all three notebooks** — positional rename, `spark.createDataFrame`, Delta append
+onto a table already written by the XMLA path.
 
-| Check | Result |
-|---|---|
-| Rows, XMLA vs REST | 2,876 vs 2,876 |
-| Column count and order | 21 vs 21, identical order |
-| Per-cell diff across all 21 columns | **0 mismatches** |
-| `SUM(TotalCUs)` | 71,426.739 vs 71,426.739 |
-| Spark schema equality | **identical, empty diff** |
-| Delta append of REST rows onto an XMLA-written table | **succeeded**, 5,752 rows = 2,876 + 2,876 |
-| `TimePoint` column type in Delta | `timestamp` (not string) |
-| Truncation guard | fired correctly on an over-cap query |
-| Query duration | XMLA 20.4 s, REST **7.4 s** |
+| Check | Timepoints | ItemKind | ItemOperation |
+|---|---|---|---|
+| Rows, XMLA vs REST | 2,876 vs 2,876 | 29 vs 29 | 158 vs 158 |
+| Column count and order | 21, identical | 15, identical | 17, identical |
+| Per-cell diff, every column | **0 mismatches** | **0 mismatches** | **0 mismatches** |
+| Column sums equal | yes | yes | yes (`TotalCUs` 71,856.862) |
+| Spark schema equality | **identical** | **identical** | **identical** |
+| Delta append onto an XMLA-written table | **succeeded** | **succeeded** | **succeeded** |
+
+`TotalCUs` of 71,856.862 for the ItemOperation query matches the tenant total measured independently
+from the FUAM Lakehouse, so the REST path is not just self-consistent — it agrees with the number
+FUAM already stores.
+
+The Timepoints query was also timed: XMLA 20.4 s, REST **7.4 s**. Truncation guard fired correctly on
+a deliberately over-cap query.
+
+The **patched notebooks themselves** were then executed in Fabric to confirm the inserted helper cell
+runs as written: `evaluate_dax_compat`, `_evaluate_dax_rest` and `_coerce_datetime_columns` were all
+defined, the real Metrics App returned rows through both the compat wrapper and the REST-only path,
+and the notebook's template default parameters (a placeholder workspace GUID) failed cleanly through
+the fallback with a 401 rather than hanging or silently returning empty.
 
 Column parity for the Timepoints query, matching FUAM's positional rename list:
 
@@ -96,6 +107,21 @@ isEffectiveIdentityRolesRequired : False
 
 No RLS on the Capacity Metrics model, so both user and service principal identities work.
 
+### The other Metrics App versions
+
+FUAM branches on the app version (v37 … v53) to pick a DAX string, but each notebook applies exactly
+**one** positional rename, *after* the branch:
+
+```python
+df.columns = ["CapacityId", "TimePoint", "BackgroundPercentage", ...]
+```
+
+So every version variant must already return the same column count in the same order — that is FUAM's
+own invariant, not one this change introduces. Because the transport swap preserves column count and
+order (verified above), it preserves that invariant for every variant, and the source column names
+the two transports label things with are never read. Only v53 was executed live.
+
+
 ## Two findings that shaped the implementation
 
 ### 1. The REST endpoint returns dates as strings, not datetimes
@@ -105,10 +131,19 @@ endpoint returns it as an object/string column. FUAM feeds the frame straight in
 `spark.createDataFrame` and appends to Delta, so an uncorrected fallback would write `TimePoint` as
 a **string** and conflict with the existing `timestamp` column.
 
-`_coerce_datetime_columns` restores the dtype. It converts an object column only when *every*
-non-null value parses as a date, which leaves the GUID columns (`CapacityId`, `ItemId`,
-`WorkspaceId`) untouched. After coercion the two frames are byte-identical and the Delta schemas
-match exactly.
+`_coerce_datetime_columns` restores the dtype — but it has to be **strict**, which a first attempt was
+not. `DateKey` arrives as the string `"20260908"`, and `pd.to_datetime` happily parses that as a date.
+Converting it produced a real failure on the `ItemKind` and `ItemOperation` notebooks:
+
+```
+DELTA_FAILED_TO_MERGE_FIELDS: Failed to merge fields 'DateKey' and 'DateKey'
+```
+
+XMLA returns `DateKey` as a string, so the fallback has to as well. The rule is therefore: convert an
+object column only when every non-null value both parses as a date **and** contains a `-`, `/` or `:`
+separator. That leaves `DateKey` alone and leaves the GUID columns (`CapacityId`, `ItemId`,
+`WorkspaceId`) untouched. With the strict rule all three notebooks produce a Spark schema identical to
+the XMLA path and append to Delta cleanly.
 
 ### 2. `executeQueries` truncates silently — it does not error
 
@@ -157,8 +192,11 @@ by item kind; the guard turns a silent data-loss bug into a clear error that say
   this workspace was refused with *"does not have permission to call the Discover method"* while
   `executeQueries` against the same model succeeded.
 - Query variants `v37` / `v40` / `v44` / `v47`, and `v56`/`v57` reported in #436. Only `v53` — the
-  version installed here — was exercised. The mechanism is version-independent, but the column
-  contract should be re-checked per variant.
-- The `ItemKind` and `ItemOperation` notebooks were validated at the query and column level but not
-  through a full Delta append; only `Timepoints` had the complete end-to-end run.
+  version installed here — was executed. The argument that the others are covered is structural, not
+  empirical: each notebook applies a single positional rename after the version branch, so all
+  variants must already share a column count and order, and the transport swap preserves both.
+- The patched notebooks running against **real** parameters, which would append to
+  `FUAM_Staging_Lakehouse.*_silver`. The helper cell was executed inside the patched notebooks and the
+  three queries were validated end-to-end through Delta in a scratch table, but a full production run
+  was not attempted.
 - Very large tenants, per the headroom table above.
