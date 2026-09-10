@@ -37,8 +37,8 @@ will not refuse the call. The real risk is schema drift: FUAM's changelog pins t
 
 | Path | CU data? | Throttling? | Status | Notes |
 |---|---|---|---|---|
-| XMLA → Metrics App model | Yes | Yes | Unsupported | Needs XMLA Read on the capacity |
-| Power BI REST `executeQueries` | Yes | Yes | Unsupported | 100k rows / 1M values / 15 MB / 120 queries per min |
+| XMLA → Metrics App model | Yes | Yes | Unsupported | Documented as needing XMLA Read on the capacity; *Execute* observed working on shared capacity, *Discover* refused (§2c) |
+| Power BI REST `executeQueries` | Yes | Yes | Unsupported | 100k rows / 1M values / 15 MB / 120 queries per min — **truncates silently, HTTP 200** |
 | `sempy.evaluate_dax()` | Yes | Yes | Unsupported | `read_table`/`evaluate_dax` use XMLA; `evaluate_measure` does not |
 | ARM `Microsoft.Fabric/capacities` | No | No | GA | Config only; suspend/resume |
 | Power BI `/v1.0/myorg/capacities` | No | No | GA | Config only |
@@ -618,9 +618,15 @@ the discovery work for either path.
   and the Metrics App) with the same `DatasetExecuteQueriesError` / `AnalysisServicesErrorCode
   3239575574`, while hand-built `executeQueries` DAX against the same models worked — so the failure is
   in that tool's introspection query, not the models.
-- **XMLA needs dedicated capacity.** `powerbi-modeling-mcp ConnectFabric` to the Metrics App workspace
-  failed with "does not have permission to call the Discover method" because that workspace is Pro, not
-  on capacity. The REST `executeQueries` path has no such requirement.
+- **XMLA *Discover* is gated; XMLA *Execute* is not — they are not the same test.**
+  `powerbi-modeling-mcp ConnectFabric` to the Metrics App workspace failed with "does not have
+  permission to call the Discover method", and this was originally read as proof that XMLA needs
+  dedicated capacity. Both halves of that reading were wrong. The Metrics App workspace is **not**
+  Pro — it sits on the trial capacity `Trial-Central64` (`fe27c7e1-…`). And the refusal is specific to
+  **Discover** (metadata enumeration): in a workspace confirmed shared, `fabric.evaluate_dax` ran a
+  DAX query fine and returned 150,000 rows, while `fabric.list_datasets` on that same workspace failed
+  with exactly this Discover error. Tools that enumerate schema hit it; tools that pass GUIDs and run
+  a query do not. See §2c and `docs/fuam-executequeries/README.md`.
 - Working pattern used here: `az account get-access-token --resource https://analysis.windows.net/powerbi/api`
   then `POST /v1.0/myorg/groups/{ws}/datasets/{ds}/executeQueries`. Semantic model *names* differ from
   report names (`FUAM_Core_Report` → `FUAM_Core_SM`); list them via `/groups/{ws}/datasets`.
