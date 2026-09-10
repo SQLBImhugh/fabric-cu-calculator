@@ -285,31 +285,40 @@ deployment looked like.
 
 - **FUAM itself requires a Fabric capacity** — Spark notebooks, pipelines, Lakehouse and Direct Lake
   models are all capacity workloads. That is the 12,695 CU(s)/day measured above.
-- **The Metrics App workspace probably does not need dedicated capacity, but FUAM's docs say it
-  does.** FUAM's three Capacity Metrics notebooks call SemPy `fabric.evaluate_dax()`, which Learn
-  documents as requiring "at least XMLA read-only", and XMLA is documented as a capacity feature —
-  the Power BI service description feature table lists *"XMLA endpoint read/write connectivity —
-  Power BI Pro: No"*. FUAM's `How_to_deploy_FUAM.md` follows that and demands a *"Capacity Metrics
-  app (workspace) with attached P or F-capacity with enabled XMLA endpoint"*.
+- **The Metrics App workspace does not need dedicated capacity — proven, not inferred.** FUAM's three
+  Capacity Metrics notebooks call SemPy `fabric.evaluate_dax()`, which Learn documents as requiring
+  "at least XMLA read-only", and XMLA is documented as a capacity feature — the Power BI service
+  description feature table lists *"XMLA endpoint read/write connectivity — Power BI Pro: No"*. FUAM's
+  `How_to_deploy_FUAM.md` follows that and demands a *"Capacity Metrics app (workspace) with attached
+  P or F-capacity with enabled XMLA endpoint"*, adding that *"PPU, Pro 'shared' workspaces are not
+  supported"*.
 
-  **Measured behaviour contradicts the documentation.** In a workspace confirmed shared
-  (`isOnDedicatedCapacity: False`, empty `capacityId`), `fabric.evaluate_dax` returned **150,000
-  rows** from an import model — above the REST endpoint's 100,000-row cap, so it genuinely used
-  XMLA. The same query over `executeQueries` returned exactly 100,000 rows, silently truncated. What
-  *did* fail on the shared workspace was `fabric.list_datasets`, with *"does not have permission to
-  call the Discover method"* — so the real boundary is XMLA **Execute** (works) versus **Discover**
-  (refused). FUAM passes GUIDs, so it never needs Discover.
+  **Measured behaviour contradicts both.** A fresh Capacity Metrics app (v53) was installed into a
+  workspace confirmed shared (`isOnDedicatedCapacity: False`, empty `capacityId`), and FUAM was
+  pointed at it by changing only `metric_workspace` and `metric_dataset`. FUAM's version detection
+  succeeded and selected v53; its v53 data query returned the full 2,880 timepoints for a capacity-day
+  over XMLA, matching REST exactly; and `Load_Capacity_Metrics_E2E` completed and merged into all
+  three gold tables. Separately, in a shared workspace holding a 150,000-row model,
+  `fabric.evaluate_dax` returned all **150,000 rows** — above the REST endpoint's 100,000-row cap, so
+  it genuinely used XMLA — while the same query over `executeQueries` returned exactly 100,000,
+  silently truncated. What *did* fail on shared capacity was `fabric.list_datasets`, with *"does not
+  have permission to call the Discover method"*: the boundary is XMLA **Execute** (works) versus
+  **Discover** (refused). FUAM passes GUIDs, so it never needs Discover.
 
   *This corrects two earlier claims in this document.* The first said FUAM reads the Metrics App over
   `executeQueries`; it does not, it uses XMLA. The second said the "Discover method" refusal proved
-  XMLA needs dedicated capacity; that refusal came from `list_datasets`, not from the DAX query.
-  XMLA read on shared capacity is undocumented and should not be relied on, but it is not the blocker
-  it appeared to be. Full investigation, including why the transport swap was built and then
-  rejected, is in [`docs/fuam-executequeries/README.md`](docs/fuam-executequeries/README.md).
+  XMLA needs dedicated capacity; that refusal came from `list_datasets`, not from the DAX query. XMLA
+  read on shared capacity is undocumented and carries no support guarantee, but it is not the blocker
+  it appeared to be. Full evidence, including why the transport swap was built and then rejected, is
+  in [`docs/fuam-executequeries/README.md`](docs/fuam-executequeries/README.md).
 
-  The surviving problem is a documentation contradiction: Microsoft's Metrics App install guide says
-  *"install the app in a workspace with a Pro license"* to avoid throttling, while FUAM demands P or
-  F capacity for that same workspace.
+  **Verification trap.** After a successful run the `*_silver` staging tables hold **0 rows**, because
+  the notebooks end with `DELETE FROM <silver_table>` once the merge to gold succeeds. Since they also
+  call `notebookutils.notebook.exit()` on failure — which reports `Completed` — neither job status nor
+  silver row counts distinguish success from failure. Only Delta history on the **gold** tables does.
+
+  FUAM's *own* workspace still requires a Fabric capacity; only the Metrics App workspace is in
+  question.
 
 The Metrics App's own prerequisites still apply — installed by a **capacity admin**, and it reports
 **F-SKUs only**. July's empty capacity metrics were not a capacity-assignment problem: the trial

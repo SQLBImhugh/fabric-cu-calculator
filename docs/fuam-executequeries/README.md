@@ -2,22 +2,85 @@
 
 Investigation notes for `microsoft/fabric-toolbox` → `monitoring/fabric-unified-admin-monitoring`.
 
-## Verdict: do not make this change
+## Verdict
 
-This started as a proposal to swap FUAM's Capacity Metrics reads from XMLA to the Power BI REST
-`executeQueries` endpoint, so that a Metrics App hosted in a **Pro** workspace could be read. The
-transport swap was built and fully validated. **It should not be merged**, because the premise it
-rests on is false and the swap would make FUAM less safe, not more:
+Two separate conclusions, both now backed by direct evidence.
 
-1. **XMLA is not actually blocked on a Pro workspace.** Measured directly (below):
-   `fabric.evaluate_dax` returned **150,000 rows** from a semantic model in a workspace the admin
-   API reports as `isOnDedicatedCapacity: False`. So FUAM is not broken on Pro in the way assumed.
-2. **The REST endpoint silently truncates.** The same query over `executeQueries` returned exactly
-   **100,000 rows**, HTTP 200, no warning. Swapping transports would replace a working call with one
-   that can quietly drop capacity metrics.
+**1. FUAM works, unmodified, against a Capacity Metrics app in a Pro workspace.** Proven end to end
+on 2026-09-10 against a freshly installed app in a workspace the admin API reports as
+`isOnDedicatedCapacity: False` with an empty `capacityId`. FUAM's own `Load_Capacity_Metrics_E2E`
+pipeline ran to completion and merged new rows into all three gold tables. No code change is needed —
+the deployment prerequisite is simply stricter than the code requires.
 
-What survives is a narrower, genuine problem — a **documentation contradiction** — described at the
-end. The code in this folder is kept as the evidence trail and as a warning about `executeQueries`.
+**2. The proposed transport swap should not be merged.** It was built and fully validated before
+conclusion 1 was established. It is unnecessary, and it would make FUAM less safe: `executeQueries`
+truncates silently at 100,000 rows where XMLA has no cap.
+
+The code in this folder is kept as the evidence trail and as a warning about `executeQueries`.
+
+## Proof that FUAM works on a Pro-hosted Metrics App
+
+The workspace, confirmed shared before anything else was run:
+
+```
+GET /v1.0/myorg/admin/groups?$filter=id eq '2bccc391-...'
+  name                  : Microsoft Fabric Capacity Metrics
+  isOnDedicatedCapacity : False
+  capacityId            : (empty)
+```
+
+FUAM's own code was then exercised against it, unmodified, in three stages.
+
+**Stage 1 — version detection.** FUAM identifies the app version by trial-running probe DAX through
+`fabric.evaluate_dax`. This matters because it is the single point where a blocked XMLA endpoint would
+surface, and it fails with the exact message reported in #418 and #436:
+
+> ERROR: Capacity Metrics data structure is not compatible or connection to capacity metrics is not possible.
+
+| Probe | Result against the Pro-hosted app |
+|---|---|
+| v53 | **succeeded**, 1 row |
+| v47 | succeeded, 0 rows |
+| v40 | succeeded, 1 row |
+| version FUAM selects | **v53** |
+
+**Stage 2 — the real data query, both transports.** FUAM's v53 query shape (`MPARAMETER
+'CapacitiesList'` plus two `TREATAS` filters) for one capacity and one day, the identical string sent
+over each transport from the same notebook:
+
+| Transport | Rows | Time |
+|---|--:|--:|
+| `fabric.evaluate_dax` (XMLA) | **2,880** | 14.8 s |
+| `POST .../executeQueries` (REST) | **2,880** | 4.3 s |
+
+XMLA is not blocked, and it is not degraded — it returns the full day of 2,880 thirty-second
+timepoints, matching REST exactly.
+
+**Stage 3 — the actual pipeline, end to end.** `Load_Capacity_Metrics_E2E` was run with the Pro-hosted
+app as its target. Delta history on the three gold tables in `FUAM_Lakehouse`:
+
+| Gold table | Version | Operation | Rows after |
+|---|--:|---|--:|
+| `capacity_metrics_by_timepoint` | 13 | MERGE | 81,656 |
+| `capacity_metrics_by_item_kind_by_day` | 13 | MERGE | 1,457 |
+| `capacity_metrics_by_item_by_operation_by_day` | 13 | MERGE | 8,472 |
+
+A trap worth recording: the three `*_silver` staging tables read **0 rows** afterwards, which looks
+like total failure. It is not. The notebooks end with `DELETE FROM <silver_table>` once the merge to
+gold succeeds, so an empty silver table is the normal post-run state. Checking silver alone would have
+produced exactly the wrong conclusion — and because these notebooks call
+`notebookutils.notebook.exit()` on failure, the job status reads `Completed` either way. Gold Delta
+history is the only reliable check.
+
+## Scope of the claim
+
+- **FUAM's own workspace still needs a Fabric capacity.** Its notebooks, pipelines, Lakehouse and
+  Direct Lake models are all capacity workloads. Only the *Metrics App's* workspace is in question.
+- **XMLA read on shared capacity is undocumented.** The Power BI service description feature table
+  still lists *"XMLA endpoint read/write connectivity — Power BI Pro: No"*. It works here and it
+  worked repeatedly, but Microsoft has not documented it, so it carries no support guarantee. That
+  ambiguity is the substance of the documentation question, not a reason to change code.
+- Tested with Capacity Metrics app v53 and a capacity-admin identity in one tenant.
 
 ## The original premise, and why it looked right
 
@@ -41,43 +104,30 @@ issues: #372 (where is the XMLA setting), #418 and #436 (the "data structure is 
 connection to capacity metrics is not possible**" error), #417 (SemPy execute DAX not working on new
 capacities).
 
-## The test that disproved it
+## The earlier, weaker test
 
-A workspace was created with no capacity assigned and confirmed shared:
+Before the fresh Pro-hosted Metrics App was available, the same question was approached indirectly
+with a self-authored model. That test is superseded by the one above but is retained because it
+isolates *which* XMLA operation is gated.
 
-```
-GET /v1.0/myorg/admin/groups?$filter=id eq '148230ab-...'
-  isOnDedicatedCapacity : False
-  capacityId            : (empty)
-```
-
-An import semantic model holding **150,000 rows** was deployed into it via TMDL and refreshed, then
-queried from a Fabric notebook two ways. 150,000 is the discriminator: the REST endpoint hard-caps
-at 100,000 rows, XMLA has no such cap.
+A workspace was created with no capacity assigned and confirmed shared, then an import model holding
+**150,000 rows** was deployed into it and queried two ways. 150,000 is the discriminator: the REST
+endpoint hard-caps at 100,000 rows, XMLA has no such cap.
 
 | Call, same model and same DAX | Rows returned | Time |
 |---|--:|--:|
 | `fabric.evaluate_dax(...)` | **150,000** | 10.7 s |
 | `POST .../executeQueries` | **100,000** (truncated, HTTP 200) | 1.2 s |
 
-Returning more than 100,000 rows means `evaluate_dax` really did use XMLA, against a shared-capacity
-workspace. A smaller Pro-hosted model confirmed the same thing end to end:
-
 | Call | Result |
 |---|---|
-| `evaluate_dax` on Pro model | ok, 2 rows, 13.1 s |
-| `_evaluate_dax_rest` on Pro model | ok, 2 rows, 0.5 s |
-| `evaluate_dax_compat` on Pro model | ok, 2 rows, 1.2 s |
+| `evaluate_dax` on Pro model | ok, 2 rows |
+| `evaluate_dax_compat` on Pro model | ok, 2 rows |
 | `fabric.list_datasets` on Pro workspace | **fails**: *"user does not have permission to call the Discover method"* |
 
-So the observed boundary is not XMLA-versus-no-XMLA. It is **Execute versus Discover**: running a DAX
-query worked, enumerating metadata did not. FUAM passes workspace and dataset **GUIDs**, so it never
-needs Discover.
-
-Caveat, stated plainly: XMLA read on shared capacity is **undocumented**. No Learn page announces it,
-and the feature table still says Pro: No. It works in this tenant today; it is not something to
-depend on. That cuts both ways — it is not a reason to swap transports, and it is not a guarantee
-either.
+So the boundary is not XMLA-versus-no-XMLA. It is **Execute versus Discover**: running a DAX query
+worked, enumerating metadata did not. FUAM passes workspace and dataset **GUIDs**, so it never needs
+Discover — which is consistent with it working end to end above.
 
 ## What the transport swap was, and its validation
 
@@ -259,7 +309,8 @@ needs no guard. The headroom analysis is why the swap looked acceptable, not a r
 
 ## What is actually worth raising upstream
 
-Not a transport change. A **documentation contradiction**, which is small, citable and real:
+Not a transport change. A **documentation change**, now supported by an end-to-end run rather than
+inference:
 
 - Microsoft's own install guidance for the Metrics App says to put it on Pro —
   *"To avoid throttling due to capacity overutilization, install the app in a workspace with a Pro
@@ -267,9 +318,13 @@ Not a transport change. A **documentation contradiction**, which is small, citab
   and lists the access requirement as *"A Power BI license (Pro, Premium Per User, or a Power BI
   individual trial)"*.
 - FUAM's `How_to_deploy_FUAM.md` requires the opposite: the Metrics App workspace must have an
-  *"attached P or F-capacity with enabled XMLA endpoint (at least 'Read')"*.
+  *"attached P or F-capacity with enabled XMLA endpoint (at least 'Read')"*, and states that
+  *"PPU, Pro 'shared' workspaces are not supported"*.
 
-A user who follows Microsoft's recommendation cannot satisfy FUAM's stated prerequisite. Since
-`evaluate_dax` was observed to work on shared capacity anyway, the likeliest resolution is that
-FUAM's prerequisite is **stricter than it needs to be** and should be softened or explained, rather
-than that any code needs to change. That is worth an issue; it is not worth a three-notebook PR.
+A user who follows Microsoft's recommendation cannot satisfy FUAM's stated prerequisite — yet FUAM
+runs against exactly that configuration, as demonstrated above. The prerequisite appears to be
+stricter than the code requires.
+
+The honest caveat belongs in the same breath: XMLA read on shared capacity is undocumented, so
+"it works" and "it is supported" are not the same claim. That is precisely why the wording is worth
+settling by someone who can say which it is.
