@@ -48,7 +48,9 @@ Call sites: 6 `fabric.evaluate_dax` calls in each of
 
 Measured 2026-09-10 against a live Capacity Metrics app (**v53**), capacity `Trial-Central64`
 (FTL64), date 2026-09-08. FUAM's own `dax_query_v53` strings were extracted from the deployed
-notebooks and replayed verbatim through `executeQueries`.
+notebooks and replayed verbatim.
+
+### Query results over `executeQueries`
 
 | FUAM query | Rows | Cols | Values | % of the 1,000,000-value cap |
 |---|--:|--:|--:|--:|
@@ -56,10 +58,27 @@ notebooks and replayed verbatim through `executeQueries`.
 | ItemKind | 29 | 15 | 435 | 0.04% |
 | ItemOperation | 158 | 17 | 2,686 | 0.3% |
 
-Column parity for the Timepoints query — 21 returned, 21 expected, order identical to FUAM's
-positional rename list:
+### End-to-end run inside Fabric
 
-| # | Returned by executeQueries | FUAM renames to |
+The helper in this folder was pasted verbatim into a notebook in the FUAM workspace and run against
+the live Capacity Metrics app, alongside the existing XMLA call, then pushed through FUAM's real
+downstream path — positional rename, `spark.createDataFrame`, Delta append.
+
+| Check | Result |
+|---|---|
+| Rows, XMLA vs REST | 2,876 vs 2,876 |
+| Column count and order | 21 vs 21, identical order |
+| Per-cell diff across all 21 columns | **0 mismatches** |
+| `SUM(TotalCUs)` | 71,426.739 vs 71,426.739 |
+| Spark schema equality | **identical, empty diff** |
+| Delta append of REST rows onto an XMLA-written table | **succeeded**, 5,752 rows = 2,876 + 2,876 |
+| `TimePoint` column type in Delta | `timestamp` (not string) |
+| Truncation guard | fired correctly on an over-cap query |
+| Query duration | XMLA 20.4 s, REST **7.4 s** |
+
+Column parity for the Timepoints query, matching FUAM's positional rename list:
+
+| # | Returned | FUAM renames to |
 |--:|---|---|
 | 0 | `Capacities[Capacity Id]` | `CapacityId` |
 | 1 | `Timepoints[Timepoint]` | `TimePoint` |
@@ -67,11 +86,8 @@ positional rename list:
 | … | … | … |
 | 20 | `[Exp_BD_M]` | `ExpectedBurndownInMin` |
 
-After applying FUAM's positional rename the frame is complete and usable: 2,876 rows covering
-`00:00:00` → `23:59:30` (a full day of 30-second timepoints), **0 nulls**.
-
-Service principal compatibility — `executeQueries` refuses service principals against
-RLS-enabled models, so this was checked:
+Service principal compatibility — `executeQueries` refuses service principals against RLS-enabled
+models, so this was checked:
 
 ```
 isEffectiveIdentityRequired      : False
@@ -80,30 +96,69 @@ isEffectiveIdentityRolesRequired : False
 
 No RLS on the Capacity Metrics model, so both user and service principal identities work.
 
+## Two findings that shaped the implementation
+
+### 1. The REST endpoint returns dates as strings, not datetimes
+
+Only visible in a real run. XMLA returns `Timepoints[Timepoint]` as `datetime64[ns]`; the REST
+endpoint returns it as an object/string column. FUAM feeds the frame straight into
+`spark.createDataFrame` and appends to Delta, so an uncorrected fallback would write `TimePoint` as
+a **string** and conflict with the existing `timestamp` column.
+
+`_coerce_datetime_columns` restores the dtype. It converts an object column only when *every*
+non-null value parses as a date, which leaves the GUID columns (`CapacityId`, `ItemId`,
+`WorkspaceId`) untouched. After coercion the two frames are byte-identical and the Delta schemas
+match exactly.
+
+### 2. `executeQueries` truncates silently — it does not error
+
+Measured directly:
+
+| Requested | Returned | HTTP |
+|---|---|---|
+| 150,000 rows × 1 col | **exactly 100,000 rows** | 200 |
+| 95,000 rows × 12 cols = 1,140,000 values | **83,333 rows** (999,996 values) | 200 |
+| 95,000 rows × 10 cols = 950,000 values | 95,000 rows | 200 |
+
+No warning, no error, no flag in the payload. XMLA has no such cap, so a naive fallback could
+silently write a partial day of capacity metrics and report success. `_evaluate_dax_rest` therefore
+raises when a result lands exactly on either limit.
+
+## Are the caps a deal breaker? No — with the guard
+
+| Query | Scales with | Ceiling | Observed max | Headroom |
+|---|---|--:|--:|--:|
+| Timepoints | nothing — 2,880 timepoints/day is fixed | 47,619 rows @ 21 cols | 2,876 | **structurally safe** |
+| ItemKind | item kinds (~20–30) | 66,666 rows @ 15 cols | 29 | ~2,300× |
+| ItemOperation | item × operation count | **58,823 rows @ 17 cols** | 1,948 | **30×** |
+
+The value cap binds before the row cap at these widths. The Timepoints query can never approach the
+limit no matter how large the tenant, because a day contains exactly 2,880 thirty-second timepoints.
+
+`ItemOperation` is the only query that grows with tenant size. Tripping it needs roughly **58,800
+distinct item × operation combinations on one capacity in one day** — perhaps 6,000–12,000 active
+items on a single capacity. Large, but reachable on a big F2048 estate. Since FUAM already issues one
+query per capacity per day, the natural mitigation if it is ever hit is to split further, for example
+by item kind; the guard turns a silent data-loss bug into a clear error that says so.
+
 ## Trade-offs, stated honestly
 
 - **It swaps one prerequisite for another.** `executeQueries` needs the *Dataset Execute Queries
   REST API* tenant setting and Build permission on the model. The gain is that neither requires a
   capacity, so the Pro case is unblocked. It is not a pure removal of prerequisites.
-- **Row and value caps.** `executeQueries` caps at 100,000 rows / 1,000,000 values / 15 MB per
-  query, which XMLA does not. FUAM already issues one query per capacity per day, so the largest
-  measured result used 6% of the value cap. The Timepoints query is naturally bounded at 2,880
-  rows/day. `ItemKind` and `ItemOperation` scale with item count, so a very large tenant is the
-  case to watch — a row-count guard that warns near the cap would be prudent.
-- **Request rate.** 120 requests/minute per identity. FUAM loops capacities × days, so a tenant
-  with many capacities and `metric_days_in_scope > 2` can hit it; the proposed helper backs off
-  and retries rather than failing.
-- **Fallback, not replacement.** Keeping XMLA first means no behaviour change for existing
-  deployments; only environments where XMLA fails take the new path.
+- **Request rate.** 120 requests/minute per identity. FUAM loops capacities × days, so a tenant with
+  many capacities and `metric_days_in_scope > 2` can hit it; the helper backs off and retries.
+- **Fallback, not replacement.** XMLA stays the primary path, so existing deployments are unaffected;
+  only environments where XMLA fails take the new path.
 
 ## What was not tested
 
-- Running the modified notebooks end to end inside Fabric. The DAX and column contract were
-  validated out-of-band; the notebook edit itself is unexercised.
-- A genuinely Pro-hosted Capacity Metrics app. The evidence here is indirect but consistent: XMLA
-  against this workspace was refused with *"does not have permission to call the Discover method"*
-  while `executeQueries` against the same model succeeded.
+- A genuinely Pro-hosted Capacity Metrics app. The evidence is indirect but consistent: XMLA against
+  this workspace was refused with *"does not have permission to call the Discover method"* while
+  `executeQueries` against the same model succeeded.
 - Query variants `v37` / `v40` / `v44` / `v47`, and `v56`/`v57` reported in #436. Only `v53` — the
   version installed here — was exercised. The mechanism is version-independent, but the column
   contract should be re-checked per variant.
-- Very large tenants, per the row-cap note above.
+- The `ItemKind` and `ItemOperation` notebooks were validated at the query and column level but not
+  through a full Delta append; only `Timepoints` had the complete end-to-end run.
+- Very large tenants, per the headroom table above.

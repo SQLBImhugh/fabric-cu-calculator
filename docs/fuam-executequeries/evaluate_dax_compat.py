@@ -46,6 +46,15 @@ import time
 import pandas as pd
 import sempy.fabric as fabric
 
+# executeQueries caps a result at 100,000 rows OR 1,000,000 values, whichever
+# binds first -- and it enforces them by SILENTLY TRUNCATING, returning HTTP 200
+# with no warning. Measured 2026-09-10: a request for 150,000 rows returned
+# exactly 100,000, and a request for 1,140,000 values returned 999,996. XMLA has
+# no such cap, so a fallback must detect truncation or it will quietly write
+# incomplete capacity metrics.
+_MAX_ROWS = 100_000
+_MAX_VALUES = 1_000_000
+
 
 def _evaluate_dax_rest(workspace: str, dataset: str, dax_string: str,
                        max_retries: int = 5) -> pd.DataFrame:
@@ -55,10 +64,8 @@ def _evaluate_dax_rest(workspace: str, dataset: str, dax_string: str,
     permission on the semantic model. Needs no XMLA endpoint, so it works when
     the Capacity Metrics app sits in a Pro workspace.
 
-    Limits (per Microsoft): 100,000 rows or 1,000,000 values per query, 15 MB
-    per response, and 120 requests per minute per user or service principal.
-    FUAM issues one query per capacity per day, which keeps results far below
-    the row and value caps; the request cap is handled by the retry below.
+    Raises if the response looks truncated, because a short result is worse than
+    a failure: it would be written to the lakehouse as though it were complete.
     """
     client = fabric.FabricRestClient()
     path = f"/v1.0/myorg/groups/{workspace}/datasets/{dataset}/executeQueries"
@@ -86,7 +93,47 @@ def _evaluate_dax_rest(workspace: str, dataset: str, dax_string: str,
 
     # Preserve the column order produced by the DAX projection. FUAM relies on
     # position, so this must not be sorted or otherwise reordered.
-    return pd.DataFrame(rows, columns=list(rows[0].keys()))
+    columns = list(rows[0].keys())
+    df = pd.DataFrame(rows, columns=columns)
+
+    # Truncation guard. The service returns exactly the cap, so landing on it is
+    # indistinguishable from a genuine result of that size -- treat both as
+    # suspect rather than risk writing a partial day.
+    value_cap_rows = _MAX_VALUES // max(len(columns), 1)
+    if len(df) in (_MAX_ROWS, value_cap_rows):
+        raise RuntimeError(
+            f"executeQueries returned {len(df):,} rows x {len(columns)} columns, "
+            f"which is exactly the service limit (row cap {_MAX_ROWS:,}, "
+            f"value cap {value_cap_rows:,} rows at this width). The result is "
+            f"probably truncated. Narrow the query -- for example by splitting "
+            f"the day or filtering by item kind -- or use the XMLA path, which "
+            f"has no such cap.")
+
+    return _coerce_datetime_columns(df)
+
+
+def _coerce_datetime_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Restore datetime dtypes that the JSON round-trip flattened to strings.
+
+    XMLA returns date columns as datetime64[ns]; the REST endpoint returns them
+    as strings. FUAM feeds the frame straight into spark.createDataFrame and
+    appends to a Delta table, so leaving them as strings would write a
+    conflicting column type -- TimePoint in particular.
+
+    Only object columns are considered, and a column is converted only if every
+    non-null value parses. GUID columns (CapacityId, ItemId, WorkspaceId) fail
+    that test and are left alone.
+    """
+    for column in df.columns:
+        if df[column].dtype != object:
+            continue
+        non_null = df[column].notna().sum()
+        if non_null == 0:
+            continue
+        parsed = pd.to_datetime(df[column], errors="coerce")
+        if parsed.notna().sum() == non_null:
+            df[column] = parsed
+    return df
 
 
 def evaluate_dax_compat(workspace: str, dataset: str, dax_string: str) -> pd.DataFrame:
