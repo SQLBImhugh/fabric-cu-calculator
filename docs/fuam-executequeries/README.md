@@ -1,4 +1,4 @@
-# FUAM and the Capacity Metrics app: does reading it really require XMLA?
+# FUAM and the Capacity Metrics app: the XMLA prerequisite
 
 Investigation notes for `microsoft/fabric-toolbox` → `monitoring/fabric-unified-admin-monitoring`.
 
@@ -211,7 +211,7 @@ No warning, no error, no flag in the payload. XMLA has no such cap, so a naive f
 silently write a partial day of capacity metrics and report success. `_evaluate_dax_rest` therefore
 raises when a result lands exactly on either limit.
 
-## Are the caps a deal breaker? No — with the guard
+## Cap headroom for FUAM's three queries
 
 | Query | Scales with | Ceiling | Observed max | Headroom |
 |---|---|--:|--:|--:|
@@ -224,9 +224,11 @@ limit no matter how large the tenant, because a day contains exactly 2,880 thirt
 
 `ItemOperation` is the only query that grows with tenant size. Tripping it needs roughly **58,800
 distinct item × operation combinations on one capacity in one day** — perhaps 6,000–12,000 active
-items on a single capacity. Large, but reachable on a big F2048 estate. Since FUAM already issues one
-query per capacity per day, the natural mitigation if it is ever hit is to split further, for example
-by item kind; the guard turns a silent data-loss bug into a clear error that says so.
+items on a single capacity. Large, but reachable on a big estate.
+
+So the caps are survivable for a small or mid-size tenant, and the guard converts the silent-data-loss
+case into a clear error. That is still worse than the transport it would replace: XMLA has no cap and
+needs no guard. The headroom analysis is why the swap looked acceptable, not a reason to make it.
 
 ## Trade-offs, stated honestly
 
