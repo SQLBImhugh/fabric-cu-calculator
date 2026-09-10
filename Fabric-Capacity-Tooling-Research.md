@@ -285,18 +285,31 @@ deployment looked like.
 
 - **FUAM itself requires a Fabric capacity** — Spark notebooks, pipelines, Lakehouse and Direct Lake
   models are all capacity workloads. That is the 12,695 CU(s)/day measured above.
-- **The Metrics App workspace does need dedicated capacity, because FUAM reads it over XMLA.** FUAM's
-  three Capacity Metrics notebooks call SemPy `fabric.evaluate_dax()`, which Microsoft Learn documents
-  as requiring "at least XMLA read-only" — and the XMLA endpoint is a P/F-SKU feature, so a Pro
-  workspace refuses it with *"does not have permission to call the Discover method"*. FUAM's own
-  `How_to_deploy_FUAM.md` states the prerequisite as a "Capacity Metrics app (workspace) with attached
-  P or F-capacity with enabled XMLA endpoint".
+- **The Metrics App workspace probably does not need dedicated capacity, but FUAM's docs say it
+  does.** FUAM's three Capacity Metrics notebooks call SemPy `fabric.evaluate_dax()`, which Learn
+  documents as requiring "at least XMLA read-only", and XMLA is documented as a capacity feature —
+  the Power BI service description feature table lists *"XMLA endpoint read/write connectivity —
+  Power BI Pro: No"*. FUAM's `How_to_deploy_FUAM.md` follows that and demands a *"Capacity Metrics
+  app (workspace) with attached P or F-capacity with enabled XMLA endpoint"*.
 
-  *This corrects an earlier claim in this document that FUAM used `executeQueries`.* The confusion is
-  that both transports exist: `executeQueries` is the REST path and has no capacity requirement, but
-  FUAM does not use it. Swapping FUAM onto it is proposed and validated in
-  [`docs/fuam-executequeries/README.md`](docs/fuam-executequeries/README.md) — all three queries were
-  replayed over REST, matched XMLA cell-for-cell, and round-tripped into Delta.
+  **Measured behaviour contradicts the documentation.** In a workspace confirmed shared
+  (`isOnDedicatedCapacity: False`, empty `capacityId`), `fabric.evaluate_dax` returned **150,000
+  rows** from an import model — above the REST endpoint's 100,000-row cap, so it genuinely used
+  XMLA. The same query over `executeQueries` returned exactly 100,000 rows, silently truncated. What
+  *did* fail on the shared workspace was `fabric.list_datasets`, with *"does not have permission to
+  call the Discover method"* — so the real boundary is XMLA **Execute** (works) versus **Discover**
+  (refused). FUAM passes GUIDs, so it never needs Discover.
+
+  *This corrects two earlier claims in this document.* The first said FUAM reads the Metrics App over
+  `executeQueries`; it does not, it uses XMLA. The second said the "Discover method" refusal proved
+  XMLA needs dedicated capacity; that refusal came from `list_datasets`, not from the DAX query.
+  XMLA read on shared capacity is undocumented and should not be relied on, but it is not the blocker
+  it appeared to be. Full investigation, including why the transport swap was built and then
+  rejected, is in [`docs/fuam-executequeries/README.md`](docs/fuam-executequeries/README.md).
+
+  The surviving problem is a documentation contradiction: Microsoft's Metrics App install guide says
+  *"install the app in a workspace with a Pro license"* to avoid throttling, while FUAM demands P or
+  F capacity for that same workspace.
 
 The Metrics App's own prerequisites still apply — installed by a **capacity admin**, and it reports
 **F-SKUs only**. July's empty capacity metrics were not a capacity-assignment problem: the trial

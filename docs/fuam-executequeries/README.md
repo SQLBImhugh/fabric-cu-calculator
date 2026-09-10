@@ -1,8 +1,25 @@
-# FUAM: read the Capacity Metrics app without XMLA
+# FUAM and the Capacity Metrics app: does reading it really require XMLA?
 
-A proposal for `microsoft/fabric-toolbox` → `monitoring/fabric-unified-admin-monitoring`.
+Investigation notes for `microsoft/fabric-toolbox` → `monitoring/fabric-unified-admin-monitoring`.
 
-## Problem
+## Verdict: do not make this change
+
+This started as a proposal to swap FUAM's Capacity Metrics reads from XMLA to the Power BI REST
+`executeQueries` endpoint, so that a Metrics App hosted in a **Pro** workspace could be read. The
+transport swap was built and fully validated. **It should not be merged**, because the premise it
+rests on is false and the swap would make FUAM less safe, not more:
+
+1. **XMLA is not actually blocked on a Pro workspace.** Measured directly (below):
+   `fabric.evaluate_dax` returned **150,000 rows** from a semantic model in a workspace the admin
+   API reports as `isOnDedicatedCapacity: False`. So FUAM is not broken on Pro in the way assumed.
+2. **The REST endpoint silently truncates.** The same query over `executeQueries` returned exactly
+   **100,000 rows**, HTTP 200, no warning. Swapping transports would replace a working call with one
+   that can quietly drop capacity metrics.
+
+What survives is a narrower, genuine problem — a **documentation contradiction** — described at the
+end. The code in this folder is kept as the evidence trail and as a warning about `executeQueries`.
+
+## The original premise, and why it looked right
 
 FUAM's three capacity-metrics notebooks read the Capacity Metrics app with
 `fabric.evaluate_dax`. Microsoft documents that call as XMLA-based:
@@ -12,37 +29,72 @@ FUAM's three capacity-metrics notebooks read the Capacity Metrics app with
 
 (By contrast the same page notes `evaluate_measure` "is **not** retrieved using XMLA".)
 
-XMLA endpoints exist only on P/F capacities, so `How_to_deploy_FUAM.md` requires:
+XMLA endpoints are documented as a capacity feature — the Power BI service description's feature
+table lists *"XMLA endpoint read/write connectivity — Power BI Pro: **No**"*
+([service description](https://learn.microsoft.com/office365/servicedescriptions/power-bi-service-description#feature-availability))
+— so `How_to_deploy_FUAM.md` requires:
 
 > "Fabric Capacity Metrics app (workspace) **with attached P or F-capacity** with **enabled XMLA endpoint** (at least 'Read')"
 
-That excludes a Capacity Metrics app installed into a **Pro workspace**, which is the default
-outcome for anyone who installs the app and does not also assign its workspace to a capacity.
-It also breaks when a capacity admin leaves the XMLA endpoint off.
+That reads as excluding a Capacity Metrics app installed into a **Pro workspace**. Related upstream
+issues: #372 (where is the XMLA setting), #418 and #436 (the "data structure is not compatible **or
+connection to capacity metrics is not possible**" error), #417 (SemPy execute DAX not working on new
+capacities).
 
-Related upstream issues: #372 (where is the XMLA setting), #418 and #436 (the
-"data structure is not compatible **or connection to capacity metrics is not possible**" error),
-#417 (SemPy execute DAX not working on new capacities).
+## The test that disproved it
 
-## Proposal
+A workspace was created with no capacity assigned and confirmed shared:
 
-Keep XMLA as the primary path and fall back to the Power BI REST `executeQueries` endpoint,
-which runs the same DAX with no XMLA endpoint and no capacity requirement on the hosting
-workspace. See `evaluate_dax_compat.py`.
+```
+GET /v1.0/myorg/admin/groups?$filter=id eq '148230ab-...'
+  isOnDedicatedCapacity : False
+  capacityId            : (empty)
+```
 
-The change is small because **FUAM renames the returned columns positionally**:
+An import semantic model holding **150,000 rows** was deployed into it via TMDL and refreshed, then
+queried from a Fabric notebook two ways. 150,000 is the discriminator: the REST endpoint hard-caps
+at 100,000 rows, XMLA has no such cap.
+
+| Call, same model and same DAX | Rows returned | Time |
+|---|--:|--:|
+| `fabric.evaluate_dax(...)` | **150,000** | 10.7 s |
+| `POST .../executeQueries` | **100,000** (truncated, HTTP 200) | 1.2 s |
+
+Returning more than 100,000 rows means `evaluate_dax` really did use XMLA, against a shared-capacity
+workspace. A smaller Pro-hosted model confirmed the same thing end to end:
+
+| Call | Result |
+|---|---|
+| `evaluate_dax` on Pro model | ok, 2 rows, 13.1 s |
+| `_evaluate_dax_rest` on Pro model | ok, 2 rows, 0.5 s |
+| `evaluate_dax_compat` on Pro model | ok, 2 rows, 1.2 s |
+| `fabric.list_datasets` on Pro workspace | **fails**: *"user does not have permission to call the Discover method"* |
+
+So the observed boundary is not XMLA-versus-no-XMLA. It is **Execute versus Discover**: running a DAX
+query worked, enumerating metadata did not. FUAM passes workspace and dataset **GUIDs**, so it never
+needs Discover.
+
+Caveat, stated plainly: XMLA read on shared capacity is **undocumented**. No Learn page announces it,
+and the feature table still says Pro: No. It works in this tenant today; it is not something to
+depend on. That cuts both ways — it is not a reason to swap transports, and it is not a guarantee
+either.
+
+## What the transport swap was, and its validation
+
+Kept for the record. Keep XMLA as the primary path and fall back to REST `executeQueries`; see
+`evaluate_dax_compat.py`. The change is small because **FUAM renames the returned columns
+positionally**:
 
 ```python
 capacity_df = fabric.evaluate_dax(...)
 capacity_df.columns = ['CapacityId', 'TimePoint', ...]   # positional
 ```
 
-so a replacement only has to preserve column **order and count**, not names.
-
-Call sites: 6 `fabric.evaluate_dax` calls in each of
-`01_Transfer_CapacityMetricData_Timepoints_Unit`,
+so a replacement only has to preserve column **order and count**, not names. Call sites: 6
+`fabric.evaluate_dax` calls in each of `01_Transfer_CapacityMetricData_Timepoints_Unit`,
 `02_Transfer_CapacityMetricData_ItemKind_Unit` and
-`03_Transfer_CapacityMetricData_ItemOperation_Unit`.
+`03_Transfer_CapacityMetricData_ItemOperation_Unit`. Patched notebooks are in
+`patched-notebooks/`, regenerable from current upstream with `build_patched_notebooks.py`.
 
 ## Evidence
 
@@ -178,19 +230,20 @@ by item kind; the guard turns a silent data-loss bug into a clear error that say
 
 ## Trade-offs, stated honestly
 
-- **It swaps one prerequisite for another.** `executeQueries` needs the *Dataset Execute Queries
-  REST API* tenant setting and Build permission on the model. The gain is that neither requires a
-  capacity, so the Pro case is unblocked. It is not a pure removal of prerequisites.
+- **It swaps one prerequisite for another.** `executeQueries` needs the *Semantic Model Execute
+  Queries REST API* tenant setting and Build permission on the model. It is not a pure removal of
+  prerequisites.
 - **Request rate.** 120 requests/minute per identity. FUAM loops capacities × days, so a tenant with
   many capacities and `metric_days_in_scope > 2` can hit it; the helper backs off and retries.
-- **Fallback, not replacement.** XMLA stays the primary path, so existing deployments are unaffected;
-  only environments where XMLA fails take the new path.
+- **It trades an uncapped transport for a capped one.** This is the decisive one. XMLA has no row
+  cap; `executeQueries` truncates at 100,000 rows / 1,000,000 values. Even with the guard, the best
+  case is that a large tenant gets a hard error where XMLA would simply have worked.
 
 ## What was not tested
 
-- A genuinely Pro-hosted Capacity Metrics app. The evidence is indirect but consistent: XMLA against
-  this workspace was refused with *"does not have permission to call the Discover method"* while
-  `executeQueries` against the same model succeeded.
+- A genuinely Pro-hosted *Capacity Metrics app*. A Pro-hosted **semantic model** was tested and XMLA
+  read worked against it, but the Metrics App's own model was not relocated to Pro — doing so would
+  have broken the live FUAM schedule this analysis depends on.
 - Query variants `v37` / `v40` / `v44` / `v47`, and `v56`/`v57` reported in #436. Only `v53` — the
   version installed here — was executed. The argument that the others are covered is structural, not
   empirical: each notebook applies a single positional rename after the version branch, so all
@@ -199,4 +252,22 @@ by item kind; the guard turns a silent data-loss bug into a clear error that say
   `FUAM_Staging_Lakehouse.*_silver`. The helper cell was executed inside the patched notebooks and the
   three queries were validated end-to-end through Delta in a scratch table, but a full production run
   was not attempted.
-- Very large tenants, per the headroom table above.
+- Whether XMLA-on-shared-capacity behaves the same in other tenants. It is undocumented, so it may
+  not.
+
+## What is actually worth raising upstream
+
+Not a transport change. A **documentation contradiction**, which is small, citable and real:
+
+- Microsoft's own install guidance for the Metrics App says to put it on Pro —
+  *"To avoid throttling due to capacity overutilization, install the app in a workspace with a Pro
+  license"* ([metrics-app-install](https://learn.microsoft.com/fabric/enterprise/metrics-app-install)) —
+  and lists the access requirement as *"A Power BI license (Pro, Premium Per User, or a Power BI
+  individual trial)"*.
+- FUAM's `How_to_deploy_FUAM.md` requires the opposite: the Metrics App workspace must have an
+  *"attached P or F-capacity with enabled XMLA endpoint (at least 'Read')"*.
+
+A user who follows Microsoft's recommendation cannot satisfy FUAM's stated prerequisite. Since
+`evaluate_dax` was observed to work on shared capacity anyway, the likeliest resolution is that
+FUAM's prerequisite is **stricter than it needs to be** and should be softened or explained, rather
+than that any code needs to change. That is worth an issue; it is not worth a three-notebook PR.
